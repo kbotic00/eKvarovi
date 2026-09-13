@@ -1,0 +1,79 @@
+@rendermode InteractiveServer
+@inject CurrentUserService CurrentUser
+@inject NavigationManager Navigation
+@implements IDisposable
+
+@if (!CurrentUser.IsInitialized)
+{
+    <MudLayout>
+        <MudMainContent>
+            <MudContainer Class="d-flex flex-column align-center justify-center" Style="height: 100vh;">
+                <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+                <MudText Typo="Typo.body1" Class="mt-4">Učitavanje...</MudText>
+            </MudContainer>
+        </MudMainContent>
+    </MudLayout>
+}
+else
+{
+    <Router AppAssembly="typeof(Program).Assembly">
+        <Found Context="routeData">
+            <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+            <FocusOnNavigate RouteData="routeData" Selector="h1" />
+        </Found>
+    </Router>
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        CurrentUser.OnChange += HandleUserChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        // zaštićena pohrana radi preko JavaScripta pa je dostupna tek ovdje,
+        // nakon što se uspostavi veza s preglednikom
+        await CurrentUser.InitializeAsync();
+
+        RedirectIfNeeded();
+
+        // StateHasChanged mora se pozvati i kad preusmjeravamo,
+        // inače zaslon zauvijek ostane na vrtuljku
+        StateHasChanged();
+    }
+
+    private void HandleUserChanged()
+    {
+        InvokeAsync(() =>
+        {
+            RedirectIfNeeded();
+            StateHasChanged();
+        });
+    }
+
+    private void RedirectIfNeeded()
+    {
+        var relativePath = Navigation.ToBaseRelativePath(Navigation.Uri);
+        var isLoginPage = relativePath.StartsWith("login", StringComparison.OrdinalIgnoreCase);
+
+        if (!CurrentUser.IsLoggedIn && !isLoginPage)
+        {
+            Navigation.NavigateTo("/login");
+        }
+        else if (CurrentUser.IsLoggedIn && isLoginPage)
+        {
+            Navigation.NavigateTo("/");
+        }
+    }
+
+    public void Dispose()
+    {
+        CurrentUser.OnChange -= HandleUserChanged;
+    }
+}

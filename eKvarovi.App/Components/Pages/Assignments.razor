@@ -1,0 +1,160 @@
+@page "/nalozi"
+@rendermode InteractiveServer
+@inject HttpClient Http
+@inject LookupService Lookups
+
+<PageTitle>Radni nalozi - e-Kvarovi</PageTitle>
+
+<MudStack Spacing="1" Class="mb-6">
+    <MudText Typo="Typo.h4">Radni nalozi</MudText>
+    <MudText Typo="Typo.body2" Class="mud-text-secondary">
+        @Filtered.Count() naloga · @Filtered.Count(x => x.IsOverdue) s probijenim rokom
+    </MudText>
+</MudStack>
+
+<MudPaper Elevation="0" Class="pa-4 mb-4">
+    <MudGrid Spacing="2">
+        <MudItem xs="12" md="4">
+            <MudTextField @bind-Value="search"
+                          Placeholder="Pretraži po kvaru ili lokaciji"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Rounded.Search"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Immediate="true" />
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="4">
+            <MudSelect T="int?" @bind-Value="filterTechnicianId"
+                       Label="Izvršitelj" Variant="Variant.Outlined" Margin="Margin.Dense"
+                       Clearable="true" @bind-Value:after="Load">
+                @foreach (var technician in lookups.Technicians)
+                {
+                    <MudSelectItem T="int?" Value="@technician.Id">@technician.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+
+        <MudItem xs="12" md="4" Class="d-flex align-center">
+            <MudCheckBox @bind-Value="onlyActive" Color="Color.Primary"
+                         Label="Samo aktivni nalozi" @bind-Value:after="Load" T="bool" />
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (isLoading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (errorMessage is not null)
+{
+    <MudAlert Severity="Severity.Error">@errorMessage</MudAlert>
+}
+else
+{
+    <MudTable Items="Filtered" Hover="true" Dense="true" Elevation="0">
+        <HeaderContent>
+            <MudTh>Kvar</MudTh>
+            <MudTh>Lokacija</MudTh>
+            <MudTh>Izvršitelj</MudTh>
+            <MudTh>Dodijelio</MudTh>
+            <MudTh>Dodijeljeno</MudTh>
+            <MudTh>Zatvoreno</MudTh>
+            <MudTh>Rok</MudTh>
+            <MudTh>Status prijave</MudTh>
+            <MudTh>Nalog</MudTh>
+            <MudTh Style="width: 60px;"></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Kvar">
+                <MudLink Href="@($"/kvarovi/{context.FaultReportId}")">@context.FaultReportTitle</MudLink>
+            </MudTd>
+            <MudTd DataLabel="Lokacija">@context.LocationName</MudTd>
+            <MudTd DataLabel="Izvršitelj">@context.TechnicianName</MudTd>
+            <MudTd DataLabel="Dodijelio">@(context.AssignedByName ?? "—")</MudTd>
+            <MudTd DataLabel="Dodijeljeno">@DisplayHelpers.DateTimeShort(context.AssignedAt)</MudTd>
+            <MudTd DataLabel="Zatvoreno">@DisplayHelpers.DateTimeShort(context.UnassignedAt)</MudTd>
+            <MudTd DataLabel="Rok">
+                @if (context.IsOverdue)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Error">
+                        @DisplayHelpers.Date(context.Deadline)
+                    </MudChip>
+                }
+                else
+                {
+                    @DisplayHelpers.Date(context.Deadline)
+                }
+            </MudTd>
+            <MudTd DataLabel="Status prijave">
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Text">
+                    @context.FaultStatusName
+                </MudChip>
+            </MudTd>
+            <MudTd DataLabel="Nalog">
+                <MudChip T="string" Size="Size.Small"
+                         Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive ? "Aktivan" : "Zatvoren")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Rounded.OpenInNew"
+                               Size="Size.Small"
+                               Href="@($"/kvarovi/{context.FaultReportId}")" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>Nema naloga koji odgovaraju filterima.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+}
+
+@code {
+    private List<WorkAssignmentDto> assignments = new();
+    private AllLookupsDto lookups = new();
+
+    private string search = string.Empty;
+    private int? filterTechnicianId;
+    private bool onlyActive = true;
+
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    private IEnumerable<WorkAssignmentDto> Filtered =>
+        assignments.Where(x => string.IsNullOrWhiteSpace(search) ||
+                               x.FaultReportTitle.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                               x.LocationName.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                               x.TechnicianName.Contains(search, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        lookups = await Lookups.GetAsync();
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            var query = $"api/workassignments?onlyActive={onlyActive}";
+
+            if (filterTechnicianId.HasValue)
+            {
+                query += $"&technicianId={filterTechnicianId.Value}";
+            }
+
+            assignments = await Http.GetFromJsonAsync<List<WorkAssignmentDto>>(query) ?? new();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Podatke nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

@@ -1,0 +1,172 @@
+@page "/djelatnici"
+@rendermode InteractiveServer
+@inject HttpClient Http
+@inject CurrentUserService CurrentUser
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Djelatnici - e-Kvarovi</PageTitle>
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h4">Djelatnici</MudText>
+    @if (CurrentUser.IsAdmin)
+    {
+        <MudButton Href="/djelatnici/novi"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.PersonAdd">
+            Novi djelatnik
+        </MudButton>
+    }
+</MudStack>
+
+@if (isLoading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (errorMessage is not null)
+{
+    <MudAlert Severity="Severity.Error">@errorMessage</MudAlert>
+}
+else
+{
+    <MudStack Row="true" Spacing="2" Class="mb-4" AlignItems="AlignItems.Center">
+        <MudTextField @bind-Value="search"
+                      Placeholder="Pretraži po imenu"
+                      Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Search"
+                      Immediate="true"
+                      Variant="Variant.Outlined"
+                      Margin="Margin.Dense" />
+
+        <MudCheckBox @bind-Value="onlyTechnicians" Color="Color.Primary" Label="Samo izvršitelji" />
+    </MudStack>
+
+    <MudTable Items="Filtered" Hover="true" Striped="true" Dense="true" Elevation="1">
+        <HeaderContent>
+            <MudTh>Ime i prezime</MudTh>
+            <MudTh>Radno mjesto</MudTh>
+            <MudTh>Lokacija</MudTh>
+            <MudTh>Kontakt</MudTh>
+            <MudTh>Uloga</MudTh>
+            <MudTh>Status</MudTh>
+            @if (CurrentUser.IsAdmin)
+            {
+                <MudTh Style="width: 110px;"></MudTh>
+            }
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Ime i prezime">@context.FullName</MudTd>
+            <MudTd DataLabel="Radno mjesto">@(context.JobTitle ?? "—")</MudTd>
+            <MudTd DataLabel="Lokacija">@(context.LocationName ?? "—")</MudTd>
+            <MudTd DataLabel="Kontakt">
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.body2">@context.Email</MudText>
+                    @if (!string.IsNullOrWhiteSpace(context.Phone))
+                    {
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">@context.Phone</MudText>
+                    }
+                </MudStack>
+            </MudTd>
+            <MudTd DataLabel="Uloga">
+                @if (context.IsTechnician)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Info">
+                        Izvršitelj
+                        @if (context.ActiveAssignmentCount > 0)
+                        {
+                            <span>&nbsp;(@context.ActiveAssignmentCount)</span>
+                        }
+                    </MudChip>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">Prijavitelj</MudText>
+                }
+            </MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Size="Size.Small"
+                         Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive ? "Aktivan" : "Neaktivan")
+                </MudChip>
+            </MudTd>
+            @if (CurrentUser.IsAdmin)
+            {
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                   Size="Size.Small"
+                                   Color="Color.Primary"
+                                   Href="@($"/djelatnici/uredi/{context.Id}")" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                   Size="Size.Small"
+                                   Color="Color.Error"
+                                   OnClick="@(() => Delete(context))" />
+                </MudTd>
+            }
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>Nema djelatnika koji odgovaraju pretrazi.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+}
+
+@code {
+    private List<EmployeeDto> employees = new();
+    private string search = string.Empty;
+    private bool onlyTechnicians;
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    private IEnumerable<EmployeeDto> Filtered =>
+        employees
+            .Where(x => !onlyTechnicians || x.IsTechnician)
+            .Where(x => string.IsNullOrWhiteSpace(search) ||
+                        x.FullName.Contains(search, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            employees = await Http.GetFromJsonAsync<List<EmployeeDto>>("api/employees") ?? new();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Podatke nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task Delete(EmployeeDto employee)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Brisanje djelatnika",
+            $"Želite li obrisati djelatnika \"{employee.FullName}\"?",
+            yesText: "Obriši",
+            cancelText: "Odustani");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        var response = await Http.DeleteAsync($"api/employees/{employee.Id}");
+
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Djelatnik je obrisan.", Severity.Success);
+            await Load();
+        }
+        else
+        {
+            Snackbar.Add(await response.Content.ReadAsStringAsync(), Severity.Error);
+        }
+    }
+}

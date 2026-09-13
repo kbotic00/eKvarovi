@@ -1,0 +1,234 @@
+@page "/intervencije"
+@rendermode InteractiveServer
+@inject HttpClient Http
+@inject LookupService Lookups
+
+<PageTitle>Intervencije - e-Kvarovi</PageTitle>
+
+<MudStack Spacing="1" Class="mb-6">
+    <MudText Typo="Typo.h4">Intervencije</MudText>
+    <MudText Typo="Typo.body2" Class="mud-text-secondary">
+        @result.TotalCount intervencija odgovara filterima
+    </MudText>
+</MudStack>
+
+@* ---------- filteri se šalju API-ju, ne primjenjuju u pregledniku ---------- *@
+<MudPaper Elevation="0" Class="pa-4 mb-4">
+    <MudGrid Spacing="2">
+
+        <MudItem xs="12" md="3">
+            <MudTextField @bind-Value="filter.Search"
+                          Placeholder="Bilješka ili naslov kvara"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Rounded.Search"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Immediate="true"
+                          DebounceInterval="400"
+                          OnDebounceIntervalElapsed="Reload" />
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudNumericField @bind-Value="filter.FaultReportId"
+                             Label="Broj prijave"
+                             Variant="Variant.Outlined"
+                             Margin="Margin.Dense"
+                             Clearable="true"
+                             @bind-Value:after="Reload" />
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudSelect T="int?" @bind-Value="filter.InterventionStatusId"
+                       Label="Status" Variant="Variant.Outlined" Margin="Margin.Dense"
+                       Clearable="true" @bind-Value:after="Reload">
+                @foreach (var status in lookups.InterventionStatuses)
+                {
+                    <MudSelectItem T="int?" Value="@status.Id">@status.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudSelect T="int?" @bind-Value="filter.TechnicianId"
+                       Label="Izvršitelj" Variant="Variant.Outlined" Margin="Margin.Dense"
+                       Clearable="true" @bind-Value:after="Reload">
+                @foreach (var technician in lookups.Technicians)
+                {
+                    <MudSelectItem T="int?" Value="@technician.Id">@technician.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudSelect T="int?" @bind-Value="filter.LocationId"
+                       Label="Lokacija" Variant="Variant.Outlined" Margin="Margin.Dense"
+                       Clearable="true" @bind-Value:after="Reload">
+                @foreach (var location in lookups.Locations)
+                {
+                    <MudSelectItem T="int?" Value="@location.Id">@location.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+
+        <MudItem xs="12" md="1" Class="d-flex align-center">
+            <MudTooltip Text="Poništi filtere">
+                <MudIconButton Icon="@Icons.Material.Rounded.FilterAltOff" OnClick="ResetFilters" />
+            </MudTooltip>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudDatePicker @bind-Date="filter.StartedFrom"
+                           Label="Početak od" Variant="Variant.Outlined" Margin="Margin.Dense"
+                           Clearable="true" @bind-Date:after="Reload" />
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudDatePicker @bind-Date="filter.StartedTo"
+                           Label="Početak do" Variant="Variant.Outlined" Margin="Margin.Dense"
+                           Clearable="true" @bind-Date:after="Reload" />
+        </MudItem>
+
+    </MudGrid>
+</MudPaper>
+
+@if (isLoading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (errorMessage is not null)
+{
+    <MudAlert Severity="Severity.Error">@errorMessage</MudAlert>
+}
+else
+{
+    <MudTable Items="result.Items" Hover="true" Dense="true" Elevation="0">
+        <HeaderContent>
+            <MudTh>
+                <MudTableSortLabel T="InterventionDto" SortLabel="faultReport"
+                                   SortDirectionChanged="@(d => Sort("faultReport", d))">
+                    Kvar
+                </MudTableSortLabel>
+            </MudTh>
+            <MudTh>Lokacija</MudTh>
+            <MudTh>
+                <MudTableSortLabel T="InterventionDto" SortLabel="technician"
+                                   SortDirectionChanged="@(d => Sort("technician", d))">
+                    Izvršitelj
+                </MudTableSortLabel>
+            </MudTh>
+            <MudTh>
+                <MudTableSortLabel T="InterventionDto" SortLabel="startedAt"
+                                   SortDirectionChanged="@(d => Sort("startedAt", d))">
+                    Početak
+                </MudTableSortLabel>
+            </MudTh>
+            <MudTh>Završetak</MudTh>
+            <MudTh>
+                <MudTableSortLabel T="InterventionDto" SortLabel="duration"
+                                   SortDirectionChanged="@(d => Sort("duration", d))">
+                    Trajanje
+                </MudTableSortLabel>
+            </MudTh>
+            <MudTh>Materijal</MudTh>
+            <MudTh>
+                <MudTableSortLabel T="InterventionDto" SortLabel="status"
+                                   SortDirectionChanged="@(d => Sort("status", d))">
+                    Status
+                </MudTableSortLabel>
+            </MudTh>
+            <MudTh Style="width: 60px;"></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Kvar">
+                <MudLink Href="@($"/kvarovi/{context.FaultReportId}")">
+                    #@context.FaultReportId @context.FaultReportTitle
+                </MudLink>
+            </MudTd>
+            <MudTd DataLabel="Lokacija">@context.LocationName</MudTd>
+            <MudTd DataLabel="Izvršitelj">@context.TechnicianName</MudTd>
+            <MudTd DataLabel="Početak">@DisplayHelpers.DateTimeShort(context.StartedAt)</MudTd>
+            <MudTd DataLabel="Završetak">@DisplayHelpers.DateTimeShort(context.FinishedAt)</MudTd>
+            <MudTd DataLabel="Trajanje">@DisplayHelpers.Duration(context.DurationMinutes)</MudTd>
+            <MudTd DataLabel="Materijal">@DisplayHelpers.Money(context.TotalMaterialCost)</MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Size="Size.Small"
+                         Color="@DisplayHelpers.InterventionColor(context.InterventionStatusId)">
+                    @context.InterventionStatusName
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Rounded.OpenInNew"
+                               Size="Size.Small"
+                               Href="@($"/intervencije/{context.Id}")" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>Nema intervencija koje odgovaraju filterima.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+
+    @if (result.TotalPages > 1)
+    {
+        <MudStack AlignItems="AlignItems.Center" Class="mt-4">
+            <MudPagination Count="result.TotalPages"
+                           Selected="result.Page"
+                           SelectedChanged="GoToPage"
+                           Color="Color.Primary" />
+        </MudStack>
+    }
+}
+
+@code {
+    private PagedResultDto<InterventionDto> result = new();
+    private AllLookupsDto lookups = new();
+    private InterventionFilterDto filter = new();
+
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        lookups = await Lookups.GetAsync();
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            result = await Http.GetFromJsonAsync<PagedResultDto<InterventionDto>>(
+                "api/interventions" + filter.ToQueryString()) ?? new();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Podatke nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task Sort(string column, SortDirection direction)
+    {
+        filter.SortBy = column;
+        filter.SortDescending = direction == SortDirection.Descending;
+        filter.Page = 1;
+        await Reload();
+    }
+
+    private async Task GoToPage(int page)
+    {
+        filter.Page = page;
+        await Reload();
+    }
+
+    private async Task ResetFilters()
+    {
+        filter.Reset();
+        await Reload();
+    }
+}

@@ -1,0 +1,174 @@
+@page "/materijali"
+@rendermode InteractiveServer
+@inject HttpClient Http
+@inject LookupService Lookups
+@inject CurrentUserService CurrentUser
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Materijali - e-Kvarovi</PageTitle>
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-6">
+    <MudStack Spacing="1">
+        <MudText Typo="Typo.h4">Šifarnik materijala</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            @Filtered.Count() od @materials.Count stavki
+        </MudText>
+    </MudStack>
+
+    @if (CurrentUser.IsManagement)
+    {
+        <MudButton Href="/materijali/novi"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Size="Size.Large"
+                   StartIcon="@Icons.Material.Rounded.Add">
+            Novi materijal
+        </MudButton>
+    }
+</MudStack>
+
+@if (isLoading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (errorMessage is not null)
+{
+    <MudAlert Severity="Severity.Error">@errorMessage</MudAlert>
+}
+else
+{
+    <MudStack Row="true" Spacing="2" Class="mb-4" AlignItems="AlignItems.Center">
+        <MudTextField @bind-Value="search"
+                      Placeholder="Pretraži po nazivu ili šifri"
+                      Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Rounded.Search"
+                      Variant="Variant.Outlined"
+                      Margin="Margin.Dense"
+                      Immediate="true"
+                      Style="max-width: 360px;" />
+
+        <MudCheckBox @bind-Value="onlyActive" Color="Color.Primary" Label="Samo aktivni" T="bool" />
+    </MudStack>
+
+    <MudTable Items="Filtered" Hover="true" Dense="true" Elevation="0">
+        <HeaderContent>
+            <MudTh>Šifra</MudTh>
+            <MudTh>Naziv</MudTh>
+            <MudTh>Jedinica</MudTh>
+            <MudTh>Zadana cijena</MudTh>
+            <MudTh>Korišten</MudTh>
+            <MudTh>Status</MudTh>
+            @if (CurrentUser.IsManagement)
+            {
+                <MudTh Style="width: 110px;"></MudTh>
+            }
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Šifra">
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">@(context.Code ?? "—")</MudText>
+            </MudTd>
+            <MudTd DataLabel="Naziv">@context.Name</MudTd>
+            <MudTd DataLabel="Jedinica">@context.UnitName (@context.UnitAbbreviation)</MudTd>
+            <MudTd DataLabel="Zadana cijena">@DisplayHelpers.Money(context.DefaultUnitPrice)</MudTd>
+            <MudTd DataLabel="Korišten">
+                @if (context.UsageCount > 0)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Info">
+                        @context.UsageCount
+                    </MudChip>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">—</MudText>
+                }
+            </MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Size="Size.Small"
+                         Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive ? "Aktivan" : "Neaktivan")
+                </MudChip>
+            </MudTd>
+            @if (CurrentUser.IsManagement)
+            {
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Rounded.Edit"
+                                   Size="Size.Small"
+                                   Color="Color.Primary"
+                                   Href="@($"/materijali/uredi/{context.Id}")" />
+                    <MudIconButton Icon="@Icons.Material.Rounded.Delete"
+                                   Size="Size.Small"
+                                   Color="Color.Error"
+                                   OnClick="@(() => Delete(context))" />
+                </MudTd>
+            }
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>Nema materijala koji odgovaraju pretrazi.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+}
+
+@code {
+    private List<MaterialDto> materials = new();
+    private string search = string.Empty;
+    private bool onlyActive;
+
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    private IEnumerable<MaterialDto> Filtered =>
+        materials
+            .Where(x => !onlyActive || x.IsActive)
+            .Where(x => string.IsNullOrWhiteSpace(search) ||
+                        x.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                        (x.Code ?? "").Contains(search, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            materials = await Http.GetFromJsonAsync<List<MaterialDto>>("api/materials") ?? new();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Podatke nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task Delete(MaterialDto material)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Brisanje materijala",
+            $"Želite li obrisati \"{material.Name}\"?",
+            yesText: "Obriši",
+            cancelText: "Odustani");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        var response = await Http.DeleteAsync($"api/materials/{material.Id}");
+
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Materijal je obrisan.", Severity.Success);
+            Lookups.Invalidate();
+            await Load();
+        }
+        else
+        {
+            Snackbar.Add(await response.Content.ReadAsStringAsync(), Severity.Error);
+        }
+    }
+}

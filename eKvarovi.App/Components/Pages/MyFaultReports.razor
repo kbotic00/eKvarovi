@@ -1,0 +1,208 @@
+@page "/kvarovi/moji"
+@rendermode InteractiveServer
+@inject HttpClient Http
+
+<PageTitle>Moje prijave - e-Kvarovi</PageTitle>
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-6">
+    <MudStack Spacing="1">
+        <MudText Typo="Typo.h4">Moje prijave</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            @result.TotalCount ukupno · @result.Items.Count(x => x.IsOpen) otvorenih na ovoj stranici
+        </MudText>
+    </MudStack>
+    <MudButton Href="/kvarovi/novi"
+               Variant="Variant.Filled"
+               Color="Color.Primary"
+               Size="Size.Large"
+               StartIcon="@Icons.Material.Rounded.Add">
+        Prijavi kvar
+    </MudButton>
+</MudStack>
+
+<MudStack Row="true" Spacing="2" Class="mb-4" AlignItems="AlignItems.Center">
+    <MudTextField @bind-Value="filter.Search"
+                  Placeholder="Pretraži svoje prijave"
+                  Adornment="Adornment.Start"
+                  AdornmentIcon="@Icons.Material.Rounded.Search"
+                  Variant="Variant.Outlined"
+                  Margin="Margin.Dense"
+                  Immediate="true"
+                  DebounceInterval="400"
+                  OnDebounceIntervalElapsed="Reload"
+                  Style="max-width: 360px;" />
+
+    <MudCheckBox @bind-Value="filter.OnlyOpen" Color="Color.Primary"
+                 Label="Samo otvorene" @bind-Value:after="Reload" T="bool" />
+</MudStack>
+
+@if (isLoading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (errorMessage is not null)
+{
+    <MudAlert Severity="Severity.Error">@errorMessage</MudAlert>
+}
+else if (result.Items.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">
+        Još nemate prijavljenih kvarova. Odaberite "Prijavi kvar" za unos prve prijave.
+    </MudAlert>
+}
+else
+{
+    <MudGrid Spacing="3">
+        @foreach (var report in result.Items)
+        {
+            <MudItem xs="12" md="6" lg="4">
+                <MudCard Elevation="0"
+                         Class="@($"priority-edge {DisplayHelpers.PriorityCssClass(report.FaultPriorityId)}")"
+                         Style="height: 100%;">
+                    <MudCardContent>
+
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+                            @if (report.FaultPriorityName is not null)
+                            {
+                                <MudChip T="string" Size="Size.Small"
+                                         Color="@DisplayHelpers.PriorityColor(report.FaultPriorityId)">
+                                    @report.FaultPriorityName
+                                </MudChip>
+                            }
+                            else
+                            {
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Text">
+                                    čeka pregled
+                                </MudChip>
+                            }
+
+                            <MudChip T="string" Size="Size.Small"
+                                     Color="@DisplayHelpers.StatusColor(report.FaultStatusId)">
+                                @report.FaultStatusName
+                            </MudChip>
+                        </MudStack>
+
+                        <MudText Typo="Typo.h6" Class="mt-2">@report.Title</MudText>
+
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1">
+                            @report.LocationName
+                            @if (report.FaultTypeName is not null)
+                            {
+                                <span> · @report.FaultTypeName</span>
+                            }
+                        </MudText>
+
+                        <MudText Typo="Typo.body2" Class="mt-3">
+                            @Shorten(report.Description)
+                        </MudText>
+
+                        <MudDivider Class="my-3" />
+
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                Prijavljeno: @DisplayHelpers.DateTimeShort(report.ReportedAt)
+                            </MudText>
+
+                            @if (report.Deadline is not null)
+                            {
+                                <MudText Typo="Typo.caption"
+                                         Class="@(report.IsOverdue ? "mud-error-text" : "mud-text-secondary")">
+                                    Rok: @DisplayHelpers.DeadlineText(report.Deadline, report.IsClosed)
+                                </MudText>
+                            }
+
+                            @if (report.CurrentTechnicianName is not null)
+                            {
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                    Izvršitelj: @report.CurrentTechnicianName
+                                </MudText>
+                            }
+
+                            @if (report.ClosedAt is not null)
+                            {
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                    Zatvoreno: @DisplayHelpers.DateTimeShort(report.ClosedAt)
+                                </MudText>
+                            }
+                        </MudStack>
+
+                        @if (!string.IsNullOrWhiteSpace(report.ClosingNote))
+                        {
+                            <MudAlert Severity="Severity.Info" Dense="true" Class="mt-3">
+                                @report.ClosingNote
+                            </MudAlert>
+                        }
+
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudButton Href="@($"/kvarovi/{report.Id}")"
+                                   Variant="Variant.Text"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Rounded.Visibility">
+                            Detalji
+                        </MudButton>
+
+                        @if (report.FaultStatusId == FaultStatusIds.Zaprimljeno)
+                        {
+                            <MudButton Href="@($"/kvarovi/uredi/{report.Id}")"
+                                       Variant="Variant.Text"
+                                       StartIcon="@Icons.Material.Rounded.Edit">
+                                Uredi
+                            </MudButton>
+                        }
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+
+    @if (result.TotalPages > 1)
+    {
+        <MudStack AlignItems="AlignItems.Center" Class="mt-4">
+            <MudPagination Count="result.TotalPages"
+                           Selected="result.Page"
+                           SelectedChanged="GoToPage"
+                           Color="Color.Primary" />
+        </MudStack>
+    }
+}
+
+@code {
+    private PagedResultDto<FaultReportDto> result = new();
+    private FaultReportFilterDto filter = new() { PageSize = 12 };
+
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            // API sam određuje čije su prijave, na temelju tokena
+            result = await Http.GetFromJsonAsync<PagedResultDto<FaultReportDto>>(
+                "api/faultreports/mine" + filter.ToQueryString()) ?? new();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Podatke nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task GoToPage(int page)
+    {
+        filter.Page = page;
+        await Reload();
+    }
+
+    private static string Shorten(string text) =>
+        text.Length <= 120 ? text : text[..120] + "...";
+}

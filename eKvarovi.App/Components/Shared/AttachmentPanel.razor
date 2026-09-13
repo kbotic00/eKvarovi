@@ -1,0 +1,260 @@
+@inject HttpClient Http
+@inject LookupService Lookups
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+@* Prikaz i prijenos privitaka. Ista komponenta radi i uz prijavu kvara
+   i uz intervenciju - razlikuje ih samo koji je id proslijeđen. *@
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+    <MudText Typo="Typo.h6">@Title</MudText>
+
+    @if (CanUpload)
+    {
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+            <MudSelect T="int" @bind-Value="selectedPurposeId"
+                       Label="Namjena"
+                       Variant="Variant.Outlined"
+                       Margin="Margin.Dense"
+                       Style="min-width: 190px;">
+                @foreach (var purpose in AvailablePurposes)
+                {
+                    <MudSelectItem T="int" Value="@purpose.Id">@purpose.Name</MudSelectItem>
+                }
+            </MudSelect>
+
+            @* gumb je oznaka nad skrivenim poljem za datoteku - tako izgled
+               ostaje u skladu s ostatkom sučelja, a bira se obična datoteka *@
+            <MudButton HtmlTag="label"
+                       for="@inputId"
+                       Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Rounded.CloudUpload"
+                       Disabled="isBusy">
+                Priloži
+            </MudButton>
+
+            <InputFile id="@inputId"
+                       OnChange="Upload"
+                       accept="@AcceptFilter"
+                       style="display:none" />
+        </MudStack>
+    }
+</MudStack>
+
+<MudText Typo="Typo.caption" Class="mud-text-secondary d-block mb-3">
+    Slike do 5 MB (jpg, png, webp). Za namjenu "Dokument" dopušten je i PDF do 10 MB.
+</MudText>
+
+@if (attachments.Count == 0)
+{
+    <MudAlert Severity="Severity.Info" Dense="true">Još nema priloženih datoteka.</MudAlert>
+}
+else
+{
+    @foreach (var group in attachments.GroupBy(x => x.AttachmentPurposeName))
+    {
+        <MudText Typo="Typo.subtitle2" Class="mt-3 mb-2">@group.Key</MudText>
+
+        <MudGrid Spacing="2">
+            @foreach (var item in group)
+            {
+                <MudItem xs="12" sm="6" md="4">
+                    <MudPaper Elevation="0" Class="pa-2" Style="border:1px solid var(--mud-palette-divider);">
+
+                        @if (item.IsImage)
+                        {
+                            <MudLink Href="@AbsoluteUrl(item.Url)" Target="_blank">
+                                <MudImage Src="@AbsoluteUrl(item.Url)"
+                                          Alt="@item.OriginalFileName"
+                                          Fluid="true"
+                                          Class="rounded"
+                                          Style="max-height:150px; width:100%; object-fit:cover;" />
+                            </MudLink>
+                        }
+                        else
+                        {
+                            <MudStack AlignItems="AlignItems.Center" Class="py-4">
+                                <MudIcon Icon="@Icons.Material.Rounded.PictureAsPdf"
+                                         Color="Color.Error" Size="Size.Large" />
+                                <MudLink Href="@AbsoluteUrl(item.Url)" Target="_blank" Typo="Typo.body2">
+                                    Otvori dokument
+                                </MudLink>
+                            </MudStack>
+                        }
+
+                        <MudStack Row="true" Justify="Justify.SpaceBetween"
+                                  AlignItems="AlignItems.Center" Class="mt-2">
+                            <MudStack Spacing="0" Style="overflow:hidden;">
+                                <MudText Typo="Typo.caption" Style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                                    @item.OriginalFileName
+                                </MudText>
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                    @item.SizeText · @DisplayHelpers.Date(item.UploadedAt)
+                                </MudText>
+                            </MudStack>
+
+                            @if (CanUpload)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Rounded.Delete"
+                                               Size="Size.Small"
+                                               Color="Color.Error"
+                                               OnClick="@(() => Delete(item))" />
+                            }
+                        </MudStack>
+
+                    </MudPaper>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+}
+
+@code {
+    /// <summary>Privitak se veže ili na prijavu ili na intervenciju.</summary>
+    [Parameter]
+    public int? FaultReportId { get; set; }
+
+    [Parameter]
+    public int? InterventionId { get; set; }
+
+    [Parameter]
+    public string Title { get; set; } = "Privitci";
+
+    [Parameter]
+    public bool CanUpload { get; set; } = true;
+
+    /// <summary>Koje su namjene ponuđene - prijava nudi fotografiju prije i dokument,
+    /// intervencija fotografiju nakon rada.</summary>
+    [Parameter]
+    public int[]? PurposeIds { get; set; }
+
+    [Parameter]
+    public EventCallback OnChanged { get; set; }
+
+    private List<AttachmentDto> attachments = new();
+    private List<AttachmentPurposeLookupDto> purposes = new();
+    private int selectedPurposeId;
+    private bool isBusy;
+
+    /// <summary>Jedinstven id polja - stranica može imati više ovakvih panela.</summary>
+    private readonly string inputId = $"file-{Guid.NewGuid():N}";
+
+    private IEnumerable<AttachmentPurposeLookupDto> AvailablePurposes =>
+        PurposeIds is null
+            ? purposes
+            : purposes.Where(p => PurposeIds.Contains(p.Id));
+
+    private string AcceptFilter =>
+        purposes.FirstOrDefault(p => p.Id == selectedPurposeId)?.AllowsDocuments == true
+            ? ".jpg,.jpeg,.png,.webp,.pdf"
+            : ".jpg,.jpeg,.png,.webp";
+
+    private string ApiBase => Http.BaseAddress?.ToString().TrimEnd('/') ?? string.Empty;
+
+    private string AbsoluteUrl(string url) => $"{ApiBase}{url}";
+
+    private string EndpointBase => FaultReportId.HasValue
+        ? $"api/attachments/report/{FaultReportId}"
+        : $"api/attachments/intervention/{InterventionId}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        purposes = (await Lookups.GetAsync()).AttachmentPurposes;
+
+        selectedPurposeId = AvailablePurposes.FirstOrDefault()?.Id
+            ?? purposes.FirstOrDefault()?.Id
+            ?? 0;
+    }
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        if (FaultReportId is null && InterventionId is null)
+        {
+            return;
+        }
+
+        try
+        {
+            attachments = await Http.GetFromJsonAsync<List<AttachmentDto>>(EndpointBase) ?? new();
+        }
+        catch
+        {
+            attachments = new();
+        }
+    }
+
+    private async Task Upload(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+
+        if (file is null || selectedPurposeId <= 0)
+        {
+            return;
+        }
+
+        isBusy = true;
+
+        try
+        {
+            using var content = new MultipartFormDataContent();
+
+            // veličina se provjerava i ovdje i na poslužitelju;
+            // ovo je samo da se veliki prijenos ne pokrene bez potrebe
+            var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            var fileContent = new StreamContent(stream);
+            content.Add(fileContent, "file", file.Name);
+            content.Add(new StringContent(selectedPurposeId.ToString()), "purposeId");
+
+            var response = await Http.PostAsync(EndpointBase, content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Datoteka je priložena.", Severity.Success);
+                await Load();
+                await OnChanged.InvokeAsync();
+            }
+            else
+            {
+                Snackbar.Add(await response.Content.ReadAsStringAsync(), Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Prijenos nije uspio: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task Delete(AttachmentDto item)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Brisanje privitka",
+            $"Želite li obrisati \"{item.OriginalFileName}\"?",
+            yesText: "Obriši",
+            cancelText: "Odustani");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        var response = await Http.DeleteAsync($"api/attachments/{item.Id}");
+
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Privitak je obrisan.", Severity.Success);
+            await Load();
+            await OnChanged.InvokeAsync();
+        }
+        else
+        {
+            Snackbar.Add(await response.Content.ReadAsStringAsync(), Severity.Error);
+        }
+    }
+}

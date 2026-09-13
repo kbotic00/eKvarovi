@@ -1,0 +1,40 @@
+@page "/Error"
+@layout EmptyLayout
+@using System.Diagnostics
+
+<PageTitle>Greška - e-Kvarovi</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="d-flex align-center" Style="min-height: 100vh;">
+    <MudPaper Elevation="2" Class="pa-8" Style="width: 100%;">
+        <MudStack AlignItems="AlignItems.Center" Spacing="3">
+            <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Color="Color.Error" Size="Size.Large" />
+            <MudText Typo="Typo.h5">Došlo je do greške</MudText>
+            <MudText Typo="Typo.body2" Align="Align.Center" Class="mud-text-secondary">
+                Zahtjev nije moguće obraditi. Pokušaj ponovno ili se vrati na naslovnicu.
+            </MudText>
+
+            @if (ShowRequestId)
+            {
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    Oznaka zahtjeva: <code>@RequestId</code>
+                </MudText>
+            }
+
+            <MudButton Href="/" Variant="Variant.Filled" Color="Color.Primary">
+                Natrag na naslovnicu
+            </MudButton>
+        </MudStack>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    private string? RequestId { get; set; }
+
+    private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+
+    protected override void OnInitialized() =>
+        RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+}

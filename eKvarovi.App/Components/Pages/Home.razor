@@ -1,0 +1,249 @@
+@page "/"
+@rendermode InteractiveServer
+@inject HttpClient Http
+@inject CurrentUserService CurrentUser
+
+<PageTitle>Nadzorna ploča - e-Kvarovi</PageTitle>
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-6">
+    <MudStack Spacing="1">
+        @* neutralan pozdrav - "dobrodošla/dobrodošao" ovisi o spolu korisnika,
+           a taj podatak ne vodimo *@
+        <MudText Typo="Typo.h4">Dobrodošli, @FirstName</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">@Today</MudText>
+    </MudStack>
+    <MudButton Href="/kvarovi/novi"
+               Variant="Variant.Filled"
+               Color="Color.Primary"
+               Size="Size.Large"
+               StartIcon="@Icons.Material.Rounded.Add">
+        Prijavi kvar
+    </MudButton>
+</MudStack>
+
+@if (isLoading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (errorMessage is not null)
+{
+    <MudAlert Severity="Severity.Error">@errorMessage</MudAlert>
+}
+else if (summary is not null)
+{
+    @* ---------- osobne brojke ---------- *@
+    @if (CurrentUser.EmployeeId is not null)
+    {
+        <MudGrid Spacing="3" Class="mb-3">
+            <StatCard Title="Moje prijave" Value="@summary.MyReportCount.ToString()"
+                      Hint="@($"{summary.MyOpenReportCount} otvorenih")"
+                      Icon="@Icons.Material.Rounded.Assignment" CardColor="Color.Primary" Md="3" />
+
+            @if (CurrentUser.IsTechnician)
+            {
+                <StatCard Title="Moji nalozi" Value="@summary.MyActiveAssignmentCount.ToString()"
+                          Hint="aktivnih"
+                          Icon="@Icons.Material.Rounded.Construction" CardColor="Color.Info" Md="3" />
+
+                <StatCard Title="Moje intervencije" Value="@summary.MyInterventionCount.ToString()"
+                          Hint="ukupno"
+                          Icon="@Icons.Material.Rounded.FactCheck" CardColor="Color.Secondary" Md="3" />
+            }
+        </MudGrid>
+    }
+
+    @* ---------- operativne brojke ---------- *@
+    <MudGrid Spacing="3" Class="mb-3">
+        <StatCard Title="Otvoreni kvarovi" Value="@summary.OpenReports.ToString()"
+                  Hint="@($"od ukupno {summary.TotalReports}")"
+                  Icon="@Icons.Material.Rounded.ReportProblem" CardColor="Color.Primary" />
+
+        <StatCard Title="Probijen rok" Value="@summary.OverdueReports.ToString()"
+                  Hint="kasne"
+                  Icon="@Icons.Material.Rounded.Alarm" CardColor="Color.Error" />
+
+        <StatCard Title="Bez izvršitelja" Value="@summary.UnassignedReports.ToString()"
+                  Hint="čeka dodjelu"
+                  Icon="@Icons.Material.Rounded.HourglassEmpty" CardColor="Color.Warning" />
+
+        <StatCard Title="Kritični otvoreni" Value="@summary.CriticalOpenReports.ToString()"
+                  Hint="najviši prioritet"
+                  Icon="@Icons.Material.Rounded.PriorityHigh" CardColor="Color.Error" />
+    </MudGrid>
+
+    <MudGrid Spacing="3" Class="mb-6">
+        <StatCard Title="Aktivne intervencije" Value="@summary.ActiveInterventions.ToString()"
+                  Hint="rad u tijeku"
+                  Icon="@Icons.Material.Rounded.Engineering" CardColor="Color.Info" />
+
+        <StatCard Title="Čeka potvrdu" Value="@summary.ResolvedAwaitingClosure.ToString()"
+                  Hint="riješeno, nije zatvoreno"
+                  Icon="@Icons.Material.Rounded.RuleFolder" CardColor="Color.Secondary" />
+
+        <StatCard Title="Prosječno rješavanje" Value="@($"{summary.AverageResolutionDays:0.#} d")"
+                  Hint="od prijave do zatvaranja"
+                  Icon="@Icons.Material.Rounded.Timeline" CardColor="Color.Success" />
+
+        <StatCard Title="Zatvoreno ovaj mjesec" Value="@summary.ClosedThisMonth.ToString()"
+                  Hint="@($"{DisplayHelpers.Duration(summary.TotalMinutesThisMonth)} rada")"
+                  Icon="@Icons.Material.Rounded.CheckCircle" CardColor="Color.Success" />
+    </MudGrid>
+
+    <MudGrid Spacing="3">
+
+        <MudItem xs="12" md="4">
+            <MudPaper Elevation="0" Class="pa-5" Style="height: 100%;">
+                <MudText Typo="Typo.h6" Class="mb-3">Po statusu</MudText>
+
+                @foreach (var item in summary.ByStatus)
+                {
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
+                        <MudText Typo="Typo.body2" Style="min-width: 100px;">@item.Name</MudText>
+                        <MudProgressLinear Value="@Percent(item.Count, summary.TotalReports)"
+                                           Color="Color.Primary"
+                                           Size="Size.Small"
+                                           Class="flex-grow-1 mx-2" />
+                        <MudText Typo="Typo.body2"><strong>@item.Count</strong></MudText>
+                    </MudStack>
+                }
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudPaper Elevation="0" Class="pa-5" Style="height: 100%;">
+                <MudText Typo="Typo.h6" Class="mb-3">Po vrsti kvara</MudText>
+
+                @if (summary.ByFaultType.Count == 0)
+                {
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                        Nijedna prijava još nije klasificirana.
+                    </MudText>
+                }
+                else
+                {
+                    @foreach (var item in summary.ByFaultType)
+                    {
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mb-2">
+                            <MudText Typo="Typo.body2">@item.Name</MudText>
+                            <MudChip T="string" Size="Size.Small">@item.Count</MudChip>
+                        </MudStack>
+                    }
+                }
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudPaper Elevation="0" Class="pa-5" Style="height: 100%;">
+                <MudText Typo="Typo.h6" Class="mb-3">Najopterećenije lokacije</MudText>
+
+                @if (summary.TopLocations.Count == 0)
+                {
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                        Nema otvorenih kvarova.
+                    </MudText>
+                }
+                else
+                {
+                    @foreach (var item in summary.TopLocations)
+                    {
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mb-2">
+                            <MudText Typo="Typo.body2">@item.Name</MudText>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning">@item.Count</MudChip>
+                        </MudStack>
+                    }
+                }
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudPaper Elevation="0" Class="pa-5">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+                    <MudText Typo="Typo.h6">Zadnjih pet prijava</MudText>
+                    <MudButton Href="/kvarovi" Variant="Variant.Text" Size="Size.Small">
+                        Sve prijave
+                    </MudButton>
+                </MudStack>
+
+                <MudTable Items="summary.RecentReports" Hover="true" Dense="true" Elevation="0">
+                    <HeaderContent>
+                        <MudTh>Naslov</MudTh>
+                        <MudTh>Lokacija</MudTh>
+                        <MudTh>Prijavio</MudTh>
+                        <MudTh>Izvršitelj</MudTh>
+                        <MudTh>Datum</MudTh>
+                        <MudTh>Prioritet</MudTh>
+                        <MudTh>Status</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Naslov">
+                            <MudLink Href="@($"/kvarovi/{context.Id}")">@context.Title</MudLink>
+                        </MudTd>
+                        <MudTd DataLabel="Lokacija">@context.LocationName</MudTd>
+                        <MudTd DataLabel="Prijavio">@context.ReporterName</MudTd>
+                        <MudTd DataLabel="Izvršitelj">@(context.CurrentTechnicianName ?? "—")</MudTd>
+                        <MudTd DataLabel="Datum">@DisplayHelpers.Date(context.ReportedAt)</MudTd>
+                        <MudTd DataLabel="Prioritet">
+                            @if (context.FaultPriorityName is not null)
+                            {
+                                <MudChip T="string" Size="Size.Small"
+                                         Color="@DisplayHelpers.PriorityColor(context.FaultPriorityId)">
+                                    @context.FaultPriorityName
+                                </MudChip>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.body2" Class="mud-text-secondary">—</MudText>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Status">
+                            <MudChip T="string" Size="Size.Small"
+                                     Color="@DisplayHelpers.StatusColor(context.FaultStatusId)">
+                                @context.FaultStatusName
+                            </MudChip>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        </MudItem>
+
+    </MudGrid>
+}
+
+@code {
+    private DashboardSummaryDto? summary;
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            summary = await Http.GetFromJsonAsync<DashboardSummaryDto>("api/dashboard");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Podatke nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private static double Percent(int part, int total) =>
+        total == 0 ? 0 : part * 100.0 / total;
+
+    private string FirstName =>
+        CurrentUser.DisplayName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()
+        ?? CurrentUser.DisplayName;
+
+    private static string Today
+    {
+        get
+        {
+            var culture = new System.Globalization.CultureInfo("hr-HR");
+            var text = DateTime.Now.ToString("dddd, d. MMMM yyyy.", culture);
+            return char.ToUpper(text[0], culture) + text[1..];
+        }
+    }
+}

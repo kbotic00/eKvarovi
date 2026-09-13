@@ -1,0 +1,12 @@
+@* Sitni naslov skupine u bočnom izborniku. *@
+
+<MudText Typo="Typo.caption"
+         Class="px-6 pt-5 pb-1 mud-text-secondary d-block"
+         Style="font-weight:700; font-size:.68rem; letter-spacing:.08em; text-transform:uppercase;">
+    @Text
+</MudText>
+
+@code {
+    [Parameter]
+    public string Text { get; set; } = string.Empty;
+}

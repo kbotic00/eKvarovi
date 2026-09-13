@@ -1,0 +1,113 @@
+@inherits LayoutComponentBase
+@inject CurrentUserService CurrentUser
+@inject NavigationManager Navigation
+
+<MudThemeProvider Theme="AppTheme.Theme" />
+<MudPopoverProvider />
+<MudDialogProvider CloseButton="true" MaxWidth="MaxWidth.ExtraSmall" />
+<MudSnackbarProvider />
+
+<MudLayout>
+
+    <MudAppBar Elevation="0" Color="Color.Surface">
+        <MudIconButton Icon="@Icons.Material.Rounded.Menu"
+                       Color="Color.Default"
+                       Edge="Edge.Start"
+                       OnClick="ToggleDrawer" />
+
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="ml-2">
+            <div class="stat-icon stat-primary">
+                <MudIcon Icon="@Icons.Material.Rounded.HomeRepairService" Color="Color.Primary" />
+            </div>
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.subtitle1" Style="font-weight:700; line-height:1.2;">
+                    e-Kvarovi
+                </MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary" Style="line-height:1.2;">
+                    Bjelovarsko-bilogorska županija
+                </MudText>
+            </MudStack>
+        </MudStack>
+
+        <MudSpacer />
+
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="d-none d-sm-flex">
+                <MudAvatar Color="Color.Primary" Size="Size.Medium">@Initials</MudAvatar>
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.body2" Style="font-weight:600; line-height:1.2;">
+                        @CurrentUser.DisplayName
+                    </MudText>
+                    <MudText Typo="Typo.caption" Style="line-height:1.2;"
+                             Class="@($"mud-{PrimaryRoleCssColor}-text")">
+                        @PrimaryRoleLabel
+                    </MudText>
+                </MudStack>
+            </MudStack>
+
+            @* odjava je zaseban gumb, a ne stavka u padajućem izborniku -
+               jedan klik i uvijek je vidljiva *@
+            <MudTooltip Text="Odjava">
+                <MudIconButton Icon="@Icons.Material.Rounded.Logout"
+                               Color="Color.Default"
+                               OnClick="DoLogout" />
+            </MudTooltip>
+
+        </MudStack>
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="drawerOpen" Elevation="0" ClipMode="DrawerClipMode.Always">
+        <NavMenu />
+    </MudDrawer>
+
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-8">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+
+</MudLayout>
+
+@code {
+    private bool drawerOpen = true;
+
+    /// <summary>Inicijali za avatar, npr. "Ana Kovačević" -> "AK".</summary>
+    private string Initials
+    {
+        get
+        {
+            var parts = CurrentUser.DisplayName
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+            return parts.Length switch
+            {
+                0 => "?",
+                1 => parts[0][..1].ToUpperInvariant(),
+                _ => $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
+            };
+        }
+    }
+
+    /// <summary>Korisnik može imati više uloga - prikazujemo najvišu.</summary>
+    private string PrimaryRoleLabel =>
+        CurrentUser.IsAdmin ? "Administrator"
+        : CurrentUser.IsManager ? "Upravitelj"
+        : CurrentUser.IsTechnician ? "Izvršitelj"
+        : CurrentUser.IsReporter ? "Prijavitelj"
+        : "Korisnik";
+
+    private string PrimaryRoleCssColor =>
+        CurrentUser.IsAdmin ? "error"
+        : CurrentUser.IsManager ? "warning"
+        : CurrentUser.IsTechnician ? "info"
+        : "secondary";
+
+    private void ToggleDrawer() => drawerOpen = !drawerOpen;
+
+    private async Task DoLogout()
+    {
+        await CurrentUser.LogoutAsync();
+        Navigation.NavigateTo("/login");
+    }
+}

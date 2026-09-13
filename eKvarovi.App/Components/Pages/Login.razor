@@ -1,0 +1,157 @@
+@page "/login"
+@rendermode InteractiveServer
+@layout EmptyLayout
+@inject CurrentUserService CurrentUser
+@inject NavigationManager Navigation
+
+<PageTitle>Prijava - e-Kvarovi</PageTitle>
+
+<div class="login-backdrop d-flex align-center justify-center pa-4">
+    <MudPaper Elevation="0" Class="login-card pa-0" Style="width:100%; max-width:420px; overflow:hidden;">
+
+        @* ---------- zaglavlje ---------- *@
+        <div class="pa-8 pb-6" style="background:linear-gradient(135deg,#4F46E5 0%,#6366F1 55%,#0EA5E9 100%);">
+            <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                <div style="width:56px;height:56px;border-radius:16px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;">
+                    <MudIcon Icon="@Icons.Material.Rounded.HomeRepairService"
+                             Size="Size.Large"
+                             Style="color:#fff;" />
+                </div>
+                <MudText Typo="Typo.h5" Style="color:#fff; font-weight:700;">e-Kvarovi</MudText>
+                <MudText Typo="Typo.body2" Align="Align.Center" Style="color:rgba(255,255,255,.85);">
+                    Prijava kvarova i evidencija radnih naloga
+                </MudText>
+            </MudStack>
+        </div>
+
+        @* ---------- obrazac ---------- *@
+        <div class="pa-8">
+
+            @if (!string.IsNullOrWhiteSpace(errorMessage))
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-4">@errorMessage</MudAlert>
+            }
+
+            <MudStack Spacing="3">
+
+                <MudTextField @bind-Value="email"
+                              Label="E-mail"
+                              Variant="Variant.Outlined"
+                              InputType="InputType.Email"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Rounded.AlternateEmail"
+                              Immediate="true"
+                              OnKeyDown="HandleKeyDown" />
+
+                <MudTextField @bind-Value="password"
+                              Label="Lozinka"
+                              Variant="Variant.Outlined"
+                              InputType="InputType.Password"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Rounded.Lock"
+                              Immediate="true"
+                              OnKeyDown="HandleKeyDown" />
+
+                <MudButton OnClick="DoLogin"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Size="Size.Large"
+                           FullWidth="true"
+                           Disabled="isBusy"
+                           Class="mt-2"
+                           Style="height:48px;">
+                    @if (isBusy)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        <span>Prijava...</span>
+                    }
+                    else
+                    {
+                        <span>Prijavi se</span>
+                    }
+                </MudButton>
+
+            </MudStack>
+
+            <MudDivider Class="my-6" />
+
+            <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mb-2"
+                     Style="font-weight:600; letter-spacing:.05em; text-transform:uppercase; font-size:.68rem;">
+                Demo pristup
+            </MudText>
+
+            <MudStack Spacing="1">
+                @foreach (var account in DemoAccounts)
+                {
+                    <MudButton Size="Size.Small"
+                               Variant="Variant.Outlined"
+                               FullWidth="true"
+                               StartIcon="@account.Icon"
+                               OnClick="@(() => FillDemo(account.Email, account.Password))"
+                               Class="justify-start"
+                               Style="text-transform:none; border-color:var(--mud-palette-lines-default);">
+                        @account.Label
+                    </MudButton>
+                }
+            </MudStack>
+
+        </div>
+    </MudPaper>
+</div>
+
+@code {
+    private string email = string.Empty;
+    private string password = string.Empty;
+    private string? errorMessage;
+    private bool isBusy;
+
+    private static readonly (string Label, string Email, string Password, string Icon)[] DemoAccounts =
+    [
+        ("Administrator", "admin@ekvarovi.local", "Admin123!", Icons.Material.Rounded.AdminPanelSettings),
+        ("Voditelj održavanja", "voditelj@ekvarovi.local", "Voditelj123!", Icons.Material.Rounded.SupervisorAccount),
+        ("Serviser", "serviser@ekvarovi.local", "Serviser123!", Icons.Material.Rounded.Handyman),
+        ("Prijavitelj", "prijavitelj@ekvarovi.local", "Prijava123!", Icons.Material.Rounded.PersonOutline)
+    ];
+
+    private void FillDemo(string demoEmail, string demoPassword)
+    {
+        email = demoEmail;
+        password = demoPassword;
+        errorMessage = null;
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key is "Enter" or "NumpadEnter")
+        {
+            await DoLogin();
+        }
+    }
+
+    private async Task DoLogin()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+        {
+            errorMessage = "Upišite e-mail i lozinku.";
+            return;
+        }
+
+        isBusy = true;
+
+        try
+        {
+            errorMessage = await CurrentUser.LoginAsync(email.Trim(), password);
+
+            if (errorMessage is null)
+            {
+                Navigation.NavigateTo("/");
+            }
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+}

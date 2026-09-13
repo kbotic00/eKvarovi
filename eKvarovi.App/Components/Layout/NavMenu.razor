@@ -1,0 +1,88 @@
+@inject CurrentUserService CurrentUser
+
+@* Izbornik prikazuje samo ono što uloga smije otvoriti.
+   Ovo je udobnost za korisnika, a ne zaštita - pravu zaštitu radi API. *@
+
+<div class="pt-4">
+
+    <MudNavMenu>
+
+        <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.SpaceDashboard">
+            Nadzorna ploča
+        </MudNavLink>
+
+        <MudNavLink Href="/kvarovi/novi" Icon="@Icons.Material.Rounded.AddCircleOutline">
+            Prijavi kvar
+        </MudNavLink>
+
+        @if (CurrentUser.IsFieldWorker)
+        {
+            <MudNavLink Href="/kvarovi" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.ReportProblem">
+                Sve prijave
+            </MudNavLink>
+        }
+
+        @if (CurrentUser.EmployeeId is not null)
+        {
+            <MudNavLink Href="/kvarovi/moji" Icon="@Icons.Material.Rounded.Assignment">
+                Moje prijave
+            </MudNavLink>
+        }
+
+        @if (CurrentUser.IsTechnician)
+        {
+            <SectionLabel Text="Moj teren" />
+
+            <MudNavLink Href="/nalozi/moji" Icon="@Icons.Material.Rounded.Construction">
+                Moji radni nalozi
+            </MudNavLink>
+
+            <MudNavLink Href="/intervencije/moje" Icon="@Icons.Material.Rounded.FactCheck">
+                Moje intervencije
+            </MudNavLink>
+        }
+
+        @if (CurrentUser.IsManagement)
+        {
+            <SectionLabel Text="Operativa" />
+
+            <MudNavLink Href="/nalozi" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.AssignmentInd">
+                Radni nalozi
+            </MudNavLink>
+
+            <MudNavLink Href="/intervencije" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.Engineering">
+                Intervencije
+            </MudNavLink>
+        }
+
+        @if (CurrentUser.IsFieldWorker)
+        {
+            <SectionLabel Text="Šifarnici" />
+
+            @if (CurrentUser.IsManagement)
+            {
+                <MudNavLink Href="/lokacije" Icon="@Icons.Material.Rounded.LocationOn">
+                    Lokacije
+                </MudNavLink>
+
+                <MudNavLink Href="/djelatnici" Icon="@Icons.Material.Rounded.Groups">
+                    Djelatnici
+                </MudNavLink>
+            }
+
+            <MudNavLink Href="/materijali" Icon="@Icons.Material.Rounded.Inventory2">
+                Materijali
+            </MudNavLink>
+        }
+
+        @if (CurrentUser.IsAdmin)
+        {
+            <SectionLabel Text="Administracija" />
+
+            <MudNavLink Href="/korisnici" Icon="@Icons.Material.Rounded.ManageAccounts">
+                Korisnički računi
+            </MudNavLink>
+        }
+
+    </MudNavMenu>
+</div>

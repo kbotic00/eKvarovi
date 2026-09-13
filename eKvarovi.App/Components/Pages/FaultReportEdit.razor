@@ -1,0 +1,271 @@
+@page "/kvarovi/novi"
+@page "/kvarovi/uredi/{Id:int}"
+@rendermode InteractiveServer
+@inject HttpClient Http
+@inject LookupService Lookups
+@inject NavigationManager Navigation
+@inject CurrentUserService CurrentUser
+@inject ISnackbar Snackbar
+
+<PageTitle>@Title - e-Kvarovi</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-6">
+    <MudIconButton Icon="@Icons.Material.Rounded.ArrowBack" Href="@BackUrl" />
+    <MudStack Spacing="0">
+        <MudText Typo="Typo.h4">@Title</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            Vrstu kvara, prioritet i rok određuje upravitelj pri pregledu prijave.
+        </MudText>
+    </MudStack>
+</MudStack>
+
+@if (errorMessage is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@errorMessage</MudAlert>
+}
+
+<MudPaper Elevation="0" Class="pa-6" Style="max-width: 720px;">
+    <MudForm @ref="form" Model="model">
+        <MudStack Spacing="3">
+
+            <MudTextField @bind-Value="model.Title"
+                          Label="Naslov kvara"
+                          Variant="Variant.Outlined"
+                          Required="true"
+                          RequiredError="Naslov je obavezan."
+                          HelperText="Kratko, npr. Ne radi rasvjeta u učionici 12"
+                          Immediate="true" />
+
+            <MudTextField @bind-Value="model.Description"
+                          Label="Opis kvara"
+                          Variant="Variant.Outlined"
+                          Lines="6"
+                          Required="true"
+                          RequiredError="Opis je obavezan."
+                          HelperText="Što se točno događa, od kada, utječe li na rad."
+                          Immediate="true" />
+
+            @* prijavitelj bira samo svoju lokaciju, upravitelj sve *@
+            <MudSelect T="int" @bind-Value="model.LocationId"
+                       Label="Lokacija"
+                       Variant="Variant.Outlined"
+                       Required="true"
+                       RequiredError="Odaberite lokaciju."
+                       Disabled="@(AvailableLocations.Count == 1)"
+                       HelperText="@LocationHelperText">
+                @foreach (var location in AvailableLocations)
+                {
+                    <MudSelectItem T="int" Value="@location.Id">@location.Name</MudSelectItem>
+                }
+            </MudSelect>
+
+            @* prijavitelja bira samo upravitelj - npr. kad kvar javi netko telefonom *@
+            @if (CurrentUser.IsManagement)
+            {
+                <MudSelect T="int" @bind-Value="model.ReporterId"
+                           Label="@(MustPickReporter ? "Prijavitelj (obavezno)" : "Prijavitelj")"
+                           Variant="Variant.Outlined"
+                           HelperText="@ReporterHelperText">
+                    @foreach (var employee in employees)
+                    {
+                        <MudSelectItem T="int" Value="@employee.Id">@employee.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+
+            <MudStack Row="true" Spacing="2">
+                <MudButton OnClick="Save"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Disabled="isBusy">
+                    @(IsEdit ? "Spremi promjene" : "Prijavi kvar")
+                </MudButton>
+                <MudButton Href="@BackUrl" Variant="Variant.Text">Odustani</MudButton>
+            </MudStack>
+
+            @if (!IsEdit)
+            {
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    Fotografiju možete priložiti nakon spremanja, na stranici s detaljima prijave.
+                </MudText>
+            }
+
+        </MudStack>
+    </MudForm>
+</MudPaper>
+
+@code {
+    [Parameter]
+    public int? Id { get; set; }
+
+    private MudForm? form;
+    private SaveFaultReportDto model = new();
+    private AllLookupsDto lookups = new();
+    private List<LookupDto> employees = new();
+    private EmployeeDto? me;
+    private string? errorMessage;
+    private bool isBusy;
+
+    /// <summary>
+    /// Prijavitelj prijavljuje kvar samo na svojoj lokaciji, pa mu izbornik
+    /// nudi jednu stavku. Upravitelj vidi sve jer unosi prijave sa svih objekata.
+    /// </summary>
+    private List<LookupDto> AvailableLocations
+    {
+        get
+        {
+            var ownLocationId = me?.LocationId;
+
+            if (CurrentUser.IsManagement || ownLocationId is null)
+            {
+                return lookups.Locations;
+            }
+
+            var own = lookups.Locations.Where(x => x.Id == ownLocationId.Value).ToList();
+
+            // ako matična lokacija nije među aktivnima, vraćamo sve pa
+            // poslužitelj javi jasnu poruku umjesto da izbornik ostane prazan
+            return own.Count > 0 ? own : lookups.Locations;
+        }
+    }
+
+    private string? LocationHelperText =>
+        !CurrentUser.IsManagement && AvailableLocations.Count == 1
+            ? "Kvar možete prijaviti samo na svojoj matičnoj lokaciji."
+            : null;
+
+    private bool IsEdit => Id.HasValue;
+
+    private string Title => IsEdit ? "Uredi prijavu" : "Prijava kvara";
+
+    private string BackUrl => IsEdit ? $"/kvarovi/{Id}" : "/kvarovi/moji";
+
+    /// <summary>
+    /// Administratorski račun nije vezan na djelatnika pa prijava ne može
+    /// ići "na njegovo ime" - mora izabrati tko je prijavio kvar.
+    /// </summary>
+    private bool MustPickReporter => CurrentUser.IsManagement && CurrentUser.EmployeeId is null;
+
+    private string ReporterHelperText => MustPickReporter
+        ? "Vaš račun nije vezan na djelatnika pa morate odabrati prijavitelja."
+        : "Ostavite prazno da prijava ide na Vaše ime.";
+
+    protected override async Task OnInitializedAsync()
+    {
+        lookups = await Lookups.GetAsync();
+
+        try
+        {
+            if (CurrentUser.IsManagement)
+            {
+                employees = await Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/employees") ?? new();
+            }
+
+            // vlastiti podaci trebaju nam zbog matične lokacije
+            if (CurrentUser.EmployeeId is not null)
+            {
+                me = await Http.GetFromJsonAsync<EmployeeDto>($"api/employees/{CurrentUser.EmployeeId}");
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Podatke nije moguće učitati: {ex.Message}";
+        }
+
+        // kod nove prijave lokaciju odmah postavimo ako je izbor jedan
+        if (!IsEdit && model.LocationId <= 0 && AvailableLocations.Count == 1)
+        {
+            model.LocationId = AvailableLocations[0].Id;
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!IsEdit)
+        {
+            return;
+        }
+
+        try
+        {
+            var report = await Http.GetFromJsonAsync<FaultReportDto>($"api/faultreports/{Id}");
+
+            if (report is not null)
+            {
+                model = new SaveFaultReportDto
+                {
+                    Title = report.Title,
+                    Description = report.Description,
+                    LocationId = report.LocationId,
+                    ReporterId = report.ReporterId
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Prijavu nije moguće učitati: {ex.Message}";
+        }
+    }
+
+    private async Task Save()
+    {
+        errorMessage = null;
+
+        if (form is not null)
+        {
+            await form.ValidateAsync();
+
+            if (!form.IsValid)
+            {
+                return;
+            }
+        }
+
+        if (model.LocationId <= 0)
+        {
+            errorMessage = "Odaberite lokaciju.";
+            return;
+        }
+
+        if (MustPickReporter && model.ReporterId <= 0)
+        {
+            errorMessage = "Odaberite prijavitelja - Vaš račun nije vezan na djelatnika.";
+            return;
+        }
+
+        isBusy = true;
+
+        try
+        {
+            var response = IsEdit
+                ? await Http.PutAsJsonAsync($"api/faultreports/{Id}", model)
+                : await Http.PostAsJsonAsync("api/faultreports", model);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                errorMessage = await response.Content.ReadAsStringAsync();
+                return;
+            }
+
+            if (IsEdit)
+            {
+                Snackbar.Add("Promjene su spremljene.", Severity.Success);
+                Navigation.NavigateTo($"/kvarovi/{Id}");
+            }
+            else
+            {
+                var created = await response.Content.ReadFromJsonAsync<FaultReportDto>();
+                Snackbar.Add("Kvar je prijavljen.", Severity.Success);
+                Navigation.NavigateTo(created is not null ? $"/kvarovi/{created.Id}" : "/kvarovi/moji");
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Spremanje nije uspjelo: {ex.Message}";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+}

@@ -1,0 +1,497 @@
+@page "/intervencije/{Id:int}"
+@rendermode InteractiveServer
+@inject HttpClient Http
+@inject LookupService Lookups
+@inject CurrentUserService CurrentUser
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>Intervencija - e-Kvarovi</PageTitle>
+
+@if (isLoading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (errorMessage is not null && intervention is null)
+{
+    <MudAlert Severity="Severity.Error">@errorMessage</MudAlert>
+}
+else if (intervention is not null)
+{
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-6">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIconButton Icon="@Icons.Material.Rounded.ArrowBack"
+                           Href="@($"/kvarovi/{intervention.FaultReportId}")" />
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.h4">Intervencija</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                    @intervention.FaultReportTitle · @intervention.LocationName
+                </MudText>
+            </MudStack>
+        </MudStack>
+
+        <MudChip T="string" Size="Size.Medium"
+                 Color="@DisplayHelpers.InterventionColor(intervention.InterventionStatusId)">
+            @intervention.InterventionStatusName
+        </MudChip>
+    </MudStack>
+
+    @if (errorMessage is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4">@errorMessage</MudAlert>
+    }
+
+    @if (intervention.IsFinal)
+    {
+        <MudAlert Severity="@(intervention.IsSuccessful ? Severity.Success : Severity.Warning)" Class="mb-4">
+            @if (intervention.IsSuccessful)
+            {
+                <span>Intervencija je uspješno završena. Prijava je prebačena u status Riješeno i čeka završnu provjeru upravitelja.</span>
+            }
+            else
+            {
+                <span>Intervencija je zabilježena kao neuspješna. Na istom nalogu možete pokrenuti novu intervenciju.</span>
+            }
+        </MudAlert>
+    }
+
+    <MudGrid Spacing="3">
+
+        @* ---------- lijevo: podaci o radu ---------- *@
+        <MudItem xs="12" md="7">
+            <MudPaper Elevation="0" Class="pa-6">
+                <MudText Typo="Typo.h6" Class="mb-4">Podaci o radu</MudText>
+
+                <MudStack Spacing="3">
+
+                    <MudStack Row="true" Spacing="2">
+                        <MudDatePicker @bind-Date="startedDate"
+                                       Label="Datum početka"
+                                       Variant="Variant.Outlined"
+                                       Disabled="IsLocked" />
+                        <MudTimePicker @bind-Time="startedTime"
+                                       Label="Vrijeme početka"
+                                       Variant="Variant.Outlined"
+                                       Disabled="IsLocked" />
+                    </MudStack>
+
+                    <MudTextField @bind-Value="note"
+                                  Label="Bilješka o obavljenom radu"
+                                  Variant="Variant.Outlined"
+                                  Lines="6"
+                                  Disabled="IsLocked"
+                                  HelperText="Obavezna kod završetka intervencije."
+                                  Immediate="true" />
+
+                    @if (!IsLocked)
+                    {
+                        <MudButton OnClick="SaveDraft"
+                                   Variant="Variant.Outlined"
+                                   Color="Color.Primary"
+                                   Disabled="isBusy"
+                                   StartIcon="@Icons.Material.Rounded.Save">
+                            Spremi bilješku
+                        </MudButton>
+                    }
+
+                </MudStack>
+
+                @if (intervention.IsFinal)
+                {
+                    <MudDivider Class="my-4" />
+
+                    <MudStack Spacing="2">
+                        <InfoRow Label="Početak" Value="@DisplayHelpers.DateTimeShort(intervention.StartedAt)" />
+                        <InfoRow Label="Završetak" Value="@DisplayHelpers.DateTimeShort(intervention.FinishedAt)" />
+                        <InfoRow Label="Trajanje" Value="@DisplayHelpers.Duration(intervention.DurationMinutes)" />
+                        <InfoRow Label="Izvršitelj" Value="@intervention.TechnicianName" />
+                    </MudStack>
+                }
+            </MudPaper>
+
+            @* ---------- završetak intervencije ---------- *@
+            @if (!IsLocked)
+            {
+                <MudPaper Elevation="0" Class="pa-6 mt-4">
+                    <MudText Typo="Typo.h6" Class="mb-1">Završetak intervencije</MudText>
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mb-4">
+                        Uspješan završetak automatski prebacuje prijavu u status Riješeno.
+                        Neuspješan ostaje u povijesti i dopušta novu intervenciju.
+                    </MudText>
+
+                    <MudStack Spacing="3">
+                        <MudStack Row="true" Spacing="2">
+                            <MudDatePicker @bind-Date="finishedDate"
+                                           Label="Datum završetka"
+                                           Variant="Variant.Outlined" />
+                            <MudTimePicker @bind-Time="finishedTime"
+                                           Label="Vrijeme završetka"
+                                           Variant="Variant.Outlined" />
+                        </MudStack>
+
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                            Izračunato trajanje: <strong>@ComputedDurationText</strong>
+                        </MudText>
+
+                        <MudStack Row="true" Spacing="2">
+                            <MudButton OnClick="@(() => Finish(true))"
+                                       Variant="Variant.Filled"
+                                       Color="Color.Success"
+                                       Disabled="isBusy"
+                                       StartIcon="@Icons.Material.Rounded.CheckCircle">
+                                Završi kao uspješnu
+                            </MudButton>
+
+                            <MudButton OnClick="@(() => Finish(false))"
+                                       Variant="Variant.Outlined"
+                                       Color="Color.Error"
+                                       Disabled="isBusy"
+                                       StartIcon="@Icons.Material.Rounded.Cancel">
+                                Završi kao neuspješnu
+                            </MudButton>
+                        </MudStack>
+                    </MudStack>
+                </MudPaper>
+            }
+
+            @* ---------- privitci ---------- *@
+            <MudPaper Elevation="0" Class="pa-6 mt-4">
+                <AttachmentPanel InterventionId="Id"
+                                 Title="Fotografije i dokumenti"
+                                 CanUpload="!IsLocked"
+                                 PurposeIds="@AttachmentPurposes" />
+            </MudPaper>
+        </MudItem>
+
+        @* ---------- desno: materijal ---------- *@
+        <MudItem xs="12" md="5">
+            <MudPaper Elevation="0" Class="pa-6">
+                <MudText Typo="Typo.h6" Class="mb-3">Utrošeni materijal</MudText>
+
+                @if (intervention.Materials.Count == 0)
+                {
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">
+                        Još nema unesenog materijala.
+                    </MudText>
+                }
+                else
+                {
+                    <MudSimpleTable Dense="true" Striped="true" Class="mb-3">
+                        <thead>
+                            <tr>
+                                <th>Naziv</th>
+                                <th>Količina</th>
+                                <th class="text-right">Iznos</th>
+                                @if (!IsLocked)
+                                {
+                                    <th></th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var material in intervention.Materials)
+                            {
+                                <tr>
+                                    <td>@material.MaterialName</td>
+                                    <td>@material.Quantity.ToString("0.##") @material.UnitAbbreviation</td>
+                                    <td class="text-right">@DisplayHelpers.Money(material.TotalPrice)</td>
+                                    @if (!IsLocked)
+                                    {
+                                        <td>
+                                            <MudIconButton Icon="@Icons.Material.Rounded.Delete"
+                                                           Size="Size.Small"
+                                                           Color="Color.Error"
+                                                           OnClick="@(() => DeleteMaterial(material.Id))" />
+                                        </td>
+                                    }
+                                </tr>
+                            }
+                            <tr>
+                                <td colspan="2"><strong>Ukupno</strong></td>
+                                <td class="text-right">
+                                    <strong>@DisplayHelpers.Money(intervention.TotalMaterialCost)</strong>
+                                </td>
+                                @if (!IsLocked)
+                                {
+                                    <td></td>
+                                }
+                            </tr>
+                        </tbody>
+                    </MudSimpleTable>
+                }
+
+                @if (!IsLocked)
+                {
+                    <MudDivider Class="my-3" />
+
+                    <MudStack Spacing="2">
+                        <MudSelect T="int" @bind-Value="newMaterialId"
+                                   Label="Materijal iz šifarnika"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense"
+                                   @bind-Value:after="OnMaterialSelected">
+                            @foreach (var material in materials)
+                            {
+                                <MudSelectItem T="int" Value="@material.Id">
+                                    @material.Name (@material.UnitAbbreviation)
+                                </MudSelectItem>
+                            }
+                        </MudSelect>
+
+                        <MudStack Row="true" Spacing="2">
+                            <MudNumericField @bind-Value="newQuantity"
+                                             Label="Količina"
+                                             Variant="Variant.Outlined"
+                                             Margin="Margin.Dense"
+                                             Min="0.001"
+                                             Step="1" />
+
+                            <MudNumericField @bind-Value="newUnitPrice"
+                                             Label="Cijena (€)"
+                                             Variant="Variant.Outlined"
+                                             Margin="Margin.Dense"
+                                             Min="0"
+                                             Step="0.5" />
+                        </MudStack>
+
+                        <MudButton OnClick="AddMaterial"
+                                   Variant="Variant.Outlined"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Rounded.Add"
+                                   Disabled="isBusy">
+                            Dodaj materijal
+                        </MudButton>
+                    </MudStack>
+                }
+            </MudPaper>
+        </MudItem>
+
+    </MudGrid>
+}
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private InterventionDto? intervention;
+    private List<MaterialLookupDto> materials = new();
+
+    private DateTime? startedDate;
+    private TimeSpan? startedTime;
+    private DateTime? finishedDate = DateTime.Today;
+    private TimeSpan? finishedTime = DateTime.Now.TimeOfDay;
+    private string? note;
+
+    private int newMaterialId;
+    private double newQuantity = 1;
+    private double newUnitPrice;
+
+    private bool isLoading = true;
+    private bool isBusy;
+    private string? errorMessage;
+
+    /// <summary>Prijava se nudi samo za fotografiju nakon rada i dokument.</summary>
+    private static readonly int[] AttachmentPurposes =
+        [AttachmentPurposeIds.FotografijaPoslije, AttachmentPurposeIds.Dokument];
+
+    /// <summary>Zaključena intervencija se više ne uređuje.</summary>
+    private bool IsLocked => intervention?.IsFinal ?? true;
+
+    private DateTime StartedAt =>
+        (startedDate ?? DateTime.Today).Date + (startedTime ?? TimeSpan.Zero);
+
+    private DateTime FinishedAt =>
+        (finishedDate ?? DateTime.Today).Date + (finishedTime ?? TimeSpan.Zero);
+
+    private string ComputedDurationText
+    {
+        get
+        {
+            var minutes = (int)Math.Round((FinishedAt - StartedAt).TotalMinutes);
+            return minutes < 0 ? "završetak je prije početka" : DisplayHelpers.Duration(minutes);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        materials = (await Lookups.GetAsync()).Materials;
+    }
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            intervention = await Http.GetFromJsonAsync<InterventionDto>($"api/interventions/{Id}");
+
+            if (intervention is not null)
+            {
+                startedDate = intervention.StartedAt.Date;
+                startedTime = intervention.StartedAt.TimeOfDay;
+                note = intervention.Note;
+
+                if (intervention.FinishedAt is not null)
+                {
+                    finishedDate = intervention.FinishedAt.Value.Date;
+                    finishedTime = intervention.FinishedAt.Value.TimeOfDay;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Intervenciju nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    /// <summary>Odabirom materijala se predlaže cijena iz šifarnika.</summary>
+    private void OnMaterialSelected()
+    {
+        var selected = materials.FirstOrDefault(x => x.Id == newMaterialId);
+
+        if (selected is not null)
+        {
+            newUnitPrice = selected.DefaultUnitPrice;
+        }
+    }
+
+    private async Task SaveDraft()
+    {
+        errorMessage = null;
+        isBusy = true;
+
+        try
+        {
+            var response = await Http.PutAsJsonAsync($"api/interventions/{Id}", new UpdateInterventionDto
+            {
+                StartedAt = StartedAt,
+                Note = note
+            });
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Bilješka je spremljena.", Severity.Success);
+                await Load();
+            }
+            else
+            {
+                errorMessage = await response.Content.ReadAsStringAsync();
+            }
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task Finish(bool successful)
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(note))
+        {
+            errorMessage = "Bilješka o obavljenom radu je obavezna kod završetka intervencije.";
+            return;
+        }
+
+        if (FinishedAt < StartedAt)
+        {
+            errorMessage = "Završetak ne može biti prije početka intervencije.";
+            return;
+        }
+
+        isBusy = true;
+
+        try
+        {
+            var response = await Http.PutAsJsonAsync($"api/interventions/{Id}/finish", new FinishInterventionDto
+            {
+                Successful = successful,
+                FinishedAt = FinishedAt,
+                Note = note!
+            });
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add(successful
+                    ? "Intervencija je završena. Prijava je prebačena u status Riješeno."
+                    : "Intervencija je zabilježena kao neuspješna.", Severity.Success);
+
+                await Load();
+            }
+            else
+            {
+                errorMessage = await response.Content.ReadAsStringAsync();
+            }
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task AddMaterial()
+    {
+        if (newMaterialId <= 0)
+        {
+            Snackbar.Add("Odaberite materijal.", Severity.Warning);
+            return;
+        }
+
+        if (newQuantity <= 0)
+        {
+            Snackbar.Add("Količina mora biti veća od nule.", Severity.Warning);
+            return;
+        }
+
+        isBusy = true;
+
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/interventionmaterials", new SaveInterventionMaterialDto
+            {
+                InterventionId = Id,
+                MaterialId = newMaterialId,
+                Quantity = newQuantity,
+                UnitPrice = newUnitPrice
+            });
+
+            if (response.IsSuccessStatusCode)
+            {
+                newMaterialId = 0;
+                newQuantity = 1;
+                newUnitPrice = 0;
+                await Load();
+            }
+            else
+            {
+                Snackbar.Add(await response.Content.ReadAsStringAsync(), Severity.Error);
+            }
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task DeleteMaterial(int interventionMaterialId)
+    {
+        var response = await Http.DeleteAsync($"api/interventionmaterials/{interventionMaterialId}");
+
+        if (response.IsSuccessStatusCode)
+        {
+            await Load();
+        }
+        else
+        {
+            Snackbar.Add(await response.Content.ReadAsStringAsync(), Severity.Error);
+        }
+    }
+}

@@ -1,0 +1,54 @@
+@* Kartica s jednom brojkom za nadzornu ploču. *@
+
+<MudItem xs="12" sm="6" md="@Md">
+    <MudPaper Elevation="0" Class="pa-5" Style="height:100%;">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Spacing="3">
+            <MudStack Spacing="1">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary"
+                         Style="font-weight:600; letter-spacing:.04em; text-transform:uppercase; font-size:.68rem;">
+                    @Title
+                </MudText>
+                <MudText Typo="Typo.h4" Style="font-weight:700; line-height:1;">@Value</MudText>
+                @if (!string.IsNullOrWhiteSpace(Hint))
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">@Hint</MudText>
+                }
+            </MudStack>
+
+            <div class="stat-icon @IconBackgroundClass">
+                <MudIcon Icon="@Icon" Color="@CardColor" />
+            </div>
+        </MudStack>
+    </MudPaper>
+</MudItem>
+
+@code {
+    [Parameter]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter]
+    public string Value { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? Hint { get; set; }
+
+    [Parameter]
+    public string Icon { get; set; } = Icons.Material.Rounded.Info;
+
+    [Parameter]
+    public Color CardColor { get; set; } = Color.Primary;
+
+    /// <summary>Koliko stupaca zauzima na širokom zaslonu.</summary>
+    [Parameter]
+    public int Md { get; set; } = 3;
+
+    private string IconBackgroundClass => CardColor switch
+    {
+        Color.Success => "stat-success",
+        Color.Warning => "stat-warning",
+        Color.Error => "stat-error",
+        Color.Info => "stat-info",
+        Color.Secondary => "stat-secondary",
+        _ => "stat-primary"
+    };
+}

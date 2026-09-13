@@ -1,0 +1,33 @@
+# ---------- rezultati prevođenja ----------
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# ---------- Visual Studio / Rider / VS Code ----------
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.csproj.user
+
+# ---------- baza ----------
+# SQLite baza se stvara pri pokretanju iz migracije i seedera,
+# pa nema razloga da ide u repozitorij
+*.db
+*.db-shm
+*.db-wal
+
+# ---------- prenesene datoteke korisnika ----------
+# mapa mora postojati, ali njezin sadržaj ne ide na GitHub
+eKvarovi.Api/wwwroot/uploads/*
+!eKvarovi.Api/wwwroot/uploads/.gitkeep
+
+# ---------- ostalo ----------
+*.swp
+*~
+.DS_Store
+Thumbs.db

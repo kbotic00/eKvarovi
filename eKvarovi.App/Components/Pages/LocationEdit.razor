@@ -1,0 +1,183 @@
+@page "/lokacije/nova"
+@page "/lokacije/uredi/{Id:int}"
+@rendermode InteractiveServer
+@inject HttpClient Http
+@inject LookupService Lookups
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>@Title - e-Kvarovi</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-6">
+    <MudIconButton Icon="@Icons.Material.Rounded.ArrowBack" Href="/lokacije" />
+    <MudText Typo="Typo.h4">@Title</MudText>
+</MudStack>
+
+@if (errorMessage is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@errorMessage</MudAlert>
+}
+
+<MudPaper Elevation="0" Class="pa-6" Style="max-width: 640px;">
+    <MudForm @ref="form" Model="model">
+        <MudStack Spacing="3">
+
+            <MudTextField @bind-Value="model.Name"
+                          Label="Naziv lokacije"
+                          Variant="Variant.Outlined"
+                          Required="true"
+                          RequiredError="Naziv je obavezan."
+                          Immediate="true" />
+
+            <MudSelect T="int" @bind-Value="model.LocationTypeId"
+                       Label="Vrsta lokacije"
+                       Variant="Variant.Outlined"
+                       Required="true"
+                       RequiredError="Odaberite vrstu lokacije.">
+                @foreach (var type in locationTypes)
+                {
+                    <MudSelectItem T="int" Value="@type.Id">@type.Name</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudTextField @bind-Value="model.Address"
+                          Label="Adresa"
+                          Variant="Variant.Outlined"
+                          Required="true"
+                          RequiredError="Adresa je obavezna."
+                          Immediate="true" />
+
+            <MudTextField @bind-Value="model.City"
+                          Label="Grad"
+                          Variant="Variant.Outlined"
+                          Required="true"
+                          RequiredError="Grad je obavezan."
+                          Immediate="true" />
+
+            <MudTextField @bind-Value="model.Note"
+                          Label="Napomena"
+                          Variant="Variant.Outlined"
+                          Lines="3"
+                          Immediate="true" />
+
+            <MudSwitch @bind-Value="model.IsActive"
+                       Color="Color.Primary"
+                       Label="Aktivna lokacija"
+                       T="bool" />
+
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                Na neaktivnu lokaciju ne mogu se prijavljivati novi kvarovi.
+            </MudText>
+
+            <MudStack Row="true" Spacing="2">
+                <MudButton OnClick="Save"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Disabled="isBusy">
+                    Spremi
+                </MudButton>
+                <MudButton Href="/lokacije" Variant="Variant.Text">Odustani</MudButton>
+            </MudStack>
+
+        </MudStack>
+    </MudForm>
+</MudPaper>
+
+@code {
+    [Parameter]
+    public int? Id { get; set; }
+
+    private MudForm? form;
+    private SaveLocationDto model = new();
+    private List<LookupDto> locationTypes = new();
+    private string? errorMessage;
+    private bool isBusy;
+
+    private bool IsEdit => Id.HasValue;
+
+    private string Title => IsEdit ? "Uredi lokaciju" : "Nova lokacija";
+
+    protected override async Task OnInitializedAsync()
+    {
+        locationTypes = (await Lookups.GetAsync()).LocationTypes;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!IsEdit)
+        {
+            return;
+        }
+
+        try
+        {
+            var location = await Http.GetFromJsonAsync<LocationDto>($"api/locations/{Id}");
+
+            if (location is not null)
+            {
+                model = new SaveLocationDto
+                {
+                    Name = location.Name,
+                    Address = location.Address,
+                    City = location.City,
+                    Note = location.Note,
+                    IsActive = location.IsActive,
+                    LocationTypeId = location.LocationTypeId
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Lokaciju nije moguće učitati: {ex.Message}";
+        }
+    }
+
+    private async Task Save()
+    {
+        errorMessage = null;
+
+        if (form is not null)
+        {
+            await form.ValidateAsync();
+
+            if (!form.IsValid)
+            {
+                return;
+            }
+        }
+
+        if (model.LocationTypeId <= 0)
+        {
+            errorMessage = "Odaberite vrstu lokacije.";
+            return;
+        }
+
+        isBusy = true;
+
+        try
+        {
+            var response = IsEdit
+                ? await Http.PutAsJsonAsync($"api/locations/{Id}", model)
+                : await Http.PostAsJsonAsync("api/locations", model);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add(IsEdit ? "Promjene su spremljene." : "Lokacija je dodana.", Severity.Success);
+                Lookups.Invalidate();
+                Navigation.NavigateTo("/lokacije");
+            }
+            else
+            {
+                errorMessage = await response.Content.ReadAsStringAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Spremanje nije uspjelo: {ex.Message}";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+}

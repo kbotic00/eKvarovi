@@ -1,0 +1,171 @@
+@page "/materijali/novi"
+@page "/materijali/uredi/{Id:int}"
+@rendermode InteractiveServer
+@inject HttpClient Http
+@inject LookupService Lookups
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>@Title - e-Kvarovi</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-6">
+    <MudIconButton Icon="@Icons.Material.Rounded.ArrowBack" Href="/materijali" />
+    <MudText Typo="Typo.h4">@Title</MudText>
+</MudStack>
+
+@if (errorMessage is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@errorMessage</MudAlert>
+}
+
+<MudPaper Elevation="0" Class="pa-6" Style="max-width: 560px;">
+    <MudForm @ref="form" Model="model">
+        <MudStack Spacing="3">
+
+            <MudTextField @bind-Value="model.Name"
+                          Label="Naziv materijala"
+                          Variant="Variant.Outlined"
+                          Required="true"
+                          RequiredError="Naziv je obavezan."
+                          Immediate="true" />
+
+            <MudTextField @bind-Value="model.Code"
+                          Label="Interna šifra"
+                          Variant="Variant.Outlined"
+                          HelperText="Nije obavezna."
+                          Immediate="true" />
+
+            <MudSelect T="int" @bind-Value="model.MaterialUnitId"
+                       Label="Mjerna jedinica"
+                       Variant="Variant.Outlined"
+                       Required="true"
+                       RequiredError="Odaberite mjernu jedinicu.">
+                @foreach (var unit in units)
+                {
+                    <MudSelectItem T="int" Value="@unit.Id">@unit.Name</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudNumericField @bind-Value="model.DefaultUnitPrice"
+                             Label="Zadana cijena po jedinici (€)"
+                             Variant="Variant.Outlined"
+                             Min="0"
+                             Step="0.5"
+                             HelperText="Predlaže se pri unosu na intervenciji, može se ispraviti." />
+
+            <MudSwitch @bind-Value="model.IsActive"
+                       Color="Color.Primary"
+                       Label="Aktivan"
+                       T="bool" />
+
+            <MudStack Row="true" Spacing="2">
+                <MudButton OnClick="Save"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Disabled="isBusy">
+                    Spremi
+                </MudButton>
+                <MudButton Href="/materijali" Variant="Variant.Text">Odustani</MudButton>
+            </MudStack>
+
+        </MudStack>
+    </MudForm>
+</MudPaper>
+
+@code {
+    [Parameter]
+    public int? Id { get; set; }
+
+    private MudForm? form;
+    private SaveMaterialDto model = new();
+    private List<LookupDto> units = new();
+    private string? errorMessage;
+    private bool isBusy;
+
+    private bool IsEdit => Id.HasValue;
+
+    private string Title => IsEdit ? "Uredi materijal" : "Novi materijal";
+
+    protected override async Task OnInitializedAsync()
+    {
+        units = (await Lookups.GetAsync()).MaterialUnits;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!IsEdit)
+        {
+            return;
+        }
+
+        try
+        {
+            var material = await Http.GetFromJsonAsync<MaterialDto>($"api/materials/{Id}");
+
+            if (material is not null)
+            {
+                model = new SaveMaterialDto
+                {
+                    Name = material.Name,
+                    Code = material.Code,
+                    MaterialUnitId = material.MaterialUnitId,
+                    DefaultUnitPrice = material.DefaultUnitPrice,
+                    IsActive = material.IsActive
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Materijal nije moguće učitati: {ex.Message}";
+        }
+    }
+
+    private async Task Save()
+    {
+        errorMessage = null;
+
+        if (form is not null)
+        {
+            await form.ValidateAsync();
+
+            if (!form.IsValid)
+            {
+                return;
+            }
+        }
+
+        if (model.MaterialUnitId <= 0)
+        {
+            errorMessage = "Odaberite mjernu jedinicu.";
+            return;
+        }
+
+        isBusy = true;
+
+        try
+        {
+            var response = IsEdit
+                ? await Http.PutAsJsonAsync($"api/materials/{Id}", model)
+                : await Http.PostAsJsonAsync("api/materials", model);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add(IsEdit ? "Promjene su spremljene." : "Materijal je dodan.", Severity.Success);
+                Lookups.Invalidate();
+                Navigation.NavigateTo("/materijali");
+            }
+            else
+            {
+                errorMessage = await response.Content.ReadAsStringAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Spremanje nije uspjelo: {ex.Message}";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+}

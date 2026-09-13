@@ -1,0 +1,292 @@
+@page "/kvarovi"
+@rendermode InteractiveServer
+@inject HttpClient Http
+@inject LookupService Lookups
+
+<PageTitle>Kvarovi - e-Kvarovi</PageTitle>
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-6">
+    <MudStack Spacing="1">
+        <MudText Typo="Typo.h4">Prijave kvarova</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            @result.TotalCount prijava odgovara filterima
+        </MudText>
+    </MudStack>
+    <MudButton Href="/kvarovi/novi"
+               Variant="Variant.Filled"
+               Color="Color.Primary"
+               Size="Size.Large"
+               StartIcon="@Icons.Material.Rounded.Add">
+        Prijavi kvar
+    </MudButton>
+</MudStack>
+
+@* ---------- filteri ---------- *@
+<MudPaper Elevation="0" Class="pa-4 mb-4">
+    <MudGrid Spacing="2">
+
+        <MudItem xs="12" md="3">
+            <MudTextField @bind-Value="filter.Search"
+                          Placeholder="Naslov ili opis"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Rounded.Search"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Immediate="true"
+                          DebounceInterval="400"
+                          OnDebounceIntervalElapsed="Reload" />
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudSelect T="int?" @bind-Value="filter.LocationId"
+                       Label="Lokacija" Variant="Variant.Outlined" Margin="Margin.Dense"
+                       Clearable="true" @bind-Value:after="Reload">
+                @foreach (var item in lookups.Locations)
+                {
+                    <MudSelectItem T="int?" Value="@item.Id">@item.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudSelect T="int?" @bind-Value="filter.FaultTypeId"
+                       Label="Vrsta" Variant="Variant.Outlined" Margin="Margin.Dense"
+                       Clearable="true" @bind-Value:after="Reload">
+                @foreach (var item in lookups.FaultTypes)
+                {
+                    <MudSelectItem T="int?" Value="@item.Id">@item.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudSelect T="int?" @bind-Value="filter.FaultPriorityId"
+                       Label="Prioritet" Variant="Variant.Outlined" Margin="Margin.Dense"
+                       Clearable="true" @bind-Value:after="Reload">
+                @foreach (var item in lookups.FaultPriorities)
+                {
+                    <MudSelectItem T="int?" Value="@item.Id">@item.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudSelect T="int?" @bind-Value="filter.FaultStatusId"
+                       Label="Status" Variant="Variant.Outlined" Margin="Margin.Dense"
+                       Clearable="true" @bind-Value:after="Reload">
+                @foreach (var item in lookups.FaultStatuses)
+                {
+                    <MudSelectItem T="int?" Value="@item.Id">@item.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+
+        <MudItem xs="12" md="1" Class="d-flex align-center">
+            <MudTooltip Text="Poništi filtere">
+                <MudIconButton Icon="@Icons.Material.Rounded.FilterAltOff"
+                               Color="Color.Default"
+                               OnClick="ResetFilters" />
+            </MudTooltip>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudSelect T="int?" @bind-Value="filter.TechnicianId"
+                       Label="Izvršitelj" Variant="Variant.Outlined" Margin="Margin.Dense"
+                       Clearable="true" @bind-Value:after="Reload">
+                @foreach (var item in lookups.Technicians)
+                {
+                    <MudSelectItem T="int?" Value="@item.Id">@item.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudDatePicker @bind-Date="filter.ReportedFrom"
+                           Label="Prijavljeno od" Variant="Variant.Outlined" Margin="Margin.Dense"
+                           Clearable="true" @bind-Date:after="Reload" />
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="2">
+            <MudDatePicker @bind-Date="filter.ReportedTo"
+                           Label="Prijavljeno do" Variant="Variant.Outlined" Margin="Margin.Dense"
+                           Clearable="true" @bind-Date:after="Reload" />
+        </MudItem>
+
+        <MudItem xs="12" md="6" Class="d-flex align-center flex-wrap">
+            <MudCheckBox @bind-Value="filter.OnlyOpen" Color="Color.Primary"
+                         Label="Samo otvoreni" @bind-Value:after="Reload" T="bool" />
+            <MudCheckBox @bind-Value="filter.OnlyOverdue" Color="Color.Error"
+                         Label="Probijen rok" @bind-Value:after="Reload" T="bool" />
+            <MudCheckBox @bind-Value="filter.OnlyUnassigned" Color="Color.Warning"
+                         Label="Bez izvršitelja" @bind-Value:after="Reload" T="bool" />
+        </MudItem>
+
+    </MudGrid>
+</MudPaper>
+
+@if (isLoading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (errorMessage is not null)
+{
+    <MudAlert Severity="Severity.Error">@errorMessage</MudAlert>
+}
+else
+{
+    <MudTable Items="result.Items" Hover="true" Dense="true" Elevation="0">
+        <HeaderContent>
+            <MudTh>
+                <MudTableSortLabel T="FaultReportDto" SortLabel="priority"
+                                   SortDirectionChanged="@(d => Sort("priority", d))">
+                    Prioritet
+                </MudTableSortLabel>
+            </MudTh>
+            <MudTh>
+                <MudTableSortLabel T="FaultReportDto" SortLabel="title"
+                                   SortDirectionChanged="@(d => Sort("title", d))">
+                    Naslov
+                </MudTableSortLabel>
+            </MudTh>
+            <MudTh>Vrsta</MudTh>
+            <MudTh>Lokacija</MudTh>
+            <MudTh>Prijavio</MudTh>
+            <MudTh>Izvršitelj</MudTh>
+            <MudTh>
+                <MudTableSortLabel T="FaultReportDto" SortLabel="reportedAt"
+                                   SortDirectionChanged="@(d => Sort("reportedAt", d))">
+                    Prijavljeno
+                </MudTableSortLabel>
+            </MudTh>
+            <MudTh>
+                <MudTableSortLabel T="FaultReportDto" SortLabel="deadline"
+                                   SortDirectionChanged="@(d => Sort("deadline", d))">
+                    Rok
+                </MudTableSortLabel>
+            </MudTh>
+            <MudTh>Status</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Prioritet">
+                @if (context.FaultPriorityName is not null)
+                {
+                    <MudChip T="string" Size="Size.Small"
+                             Color="@DisplayHelpers.PriorityColor(context.FaultPriorityId)">
+                        @context.FaultPriorityName
+                    </MudChip>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">—</MudText>
+                }
+            </MudTd>
+            <MudTd DataLabel="Naslov">
+                <MudLink Href="@($"/kvarovi/{context.Id}")">@context.Title</MudLink>
+            </MudTd>
+            <MudTd DataLabel="Vrsta">@(context.FaultTypeName ?? "—")</MudTd>
+            <MudTd DataLabel="Lokacija">@context.LocationName</MudTd>
+            <MudTd DataLabel="Prijavio">@context.ReporterName</MudTd>
+            <MudTd DataLabel="Izvršitelj">
+                @if (context.CurrentTechnicianName is not null)
+                {
+                    @context.CurrentTechnicianName
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">nije dodijeljen</MudText>
+                }
+            </MudTd>
+            <MudTd DataLabel="Prijavljeno">@DisplayHelpers.Date(context.ReportedAt)</MudTd>
+            <MudTd DataLabel="Rok">
+                @if (context.IsOverdue)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Error">
+                        @DisplayHelpers.Date(context.Deadline)
+                    </MudChip>
+                }
+                else
+                {
+                    @DisplayHelpers.Date(context.Deadline)
+                }
+            </MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Size="Size.Small"
+                         Color="@DisplayHelpers.StatusColor(context.FaultStatusId)">
+                    @context.FaultStatusName
+                </MudChip>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>Nema prijava koje odgovaraju filterima.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+
+    @if (result.TotalPages > 1)
+    {
+        <MudStack AlignItems="AlignItems.Center" Class="mt-4">
+            <MudPagination Count="result.TotalPages"
+                           Selected="result.Page"
+                           SelectedChanged="GoToPage"
+                           Color="Color.Primary" />
+        </MudStack>
+    }
+}
+
+@code {
+    private PagedResultDto<FaultReportDto> result = new();
+    private AllLookupsDto lookups = new();
+    private FaultReportFilterDto filter = new() { SortBy = "reportedAt", SortDescending = true };
+
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        lookups = await Lookups.GetAsync();
+        await Reload();
+    }
+
+    /// <summary>
+    /// Filteri i sortiranje šalju se API-ju kao query parametri -
+    /// filtriranje se radi u bazi, ne nad učitanim popisom.
+    /// </summary>
+    private async Task Reload()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            result = await Http.GetFromJsonAsync<PagedResultDto<FaultReportDto>>(
+                "api/faultreports" + filter.ToQueryString()) ?? new();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Podatke nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task Sort(string column, SortDirection direction)
+    {
+        filter.SortBy = column;
+        filter.SortDescending = direction == SortDirection.Descending;
+        filter.Page = 1;
+        await Reload();
+    }
+
+    private async Task GoToPage(int page)
+    {
+        filter.Page = page;
+        await Reload();
+    }
+
+    private async Task ResetFilters()
+    {
+        filter.Reset();
+        await Reload();
+    }
+}

@@ -1,0 +1,204 @@
+@page "/korisnici/novi"
+@page "/korisnici/uredi/{Id:int}"
+@rendermode InteractiveServer
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>@Title - e-Kvarovi</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">@Title</MudText>
+
+@if (errorMessage is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@errorMessage</MudAlert>
+}
+
+<MudPaper Elevation="1" Class="pa-6" Style="max-width: 640px;">
+    <MudForm @ref="form" Model="model">
+        <MudStack Spacing="3">
+
+            <MudTextField @bind-Value="model.Email"
+                          Label="E-mail"
+                          Variant="Variant.Outlined"
+                          InputType="InputType.Email"
+                          Required="true"
+                          RequiredError="E-mail je obavezan."
+                          Immediate="true" />
+
+            <MudTextField @bind-Value="model.DisplayName"
+                          Label="Naziv za prikaz"
+                          Variant="Variant.Outlined"
+                          Required="true"
+                          RequiredError="Naziv je obavezan."
+                          Immediate="true" />
+
+            <MudTextField @bind-Value="model.Password"
+                          Label="@(IsEdit ? "Nova lozinka (ostavi prazno da ostane ista)" : "Lozinka")"
+                          Variant="Variant.Outlined"
+                          InputType="InputType.Password"
+                          Required="@(!IsEdit)"
+                          RequiredError="Lozinka je obavezna."
+                          Immediate="true" />
+
+            <MudSelect T="int?" @bind-Value="model.EmployeeId"
+                       Label="Povezani djelatnik"
+                       Variant="Variant.Outlined"
+                       Clearable="true"
+                       HelperText="Bez veze na djelatnika račun nema vlastite prijave ni dodjele.">
+                @foreach (var employee in employees)
+                {
+                    <MudSelectItem T="int?" Value="@employee.Id">@employee.Name</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudSelect T="int" @bind-SelectedValues="selectedRoleIds"
+                       Label="Uloge"
+                       Variant="Variant.Outlined"
+                       MultiSelection="true"
+                       ToStringFunc="@(id => RoleLabel(id))">
+                @foreach (var role in roles)
+                {
+                    <MudSelectItem T="int" Value="@role.Id">@RoleLabel(role.Id)</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudSwitch @bind-Value="model.IsActive" Color="Color.Primary" Label="Aktivan račun" />
+
+            <MudStack Row="true" Spacing="2">
+                <MudButton OnClick="Save"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Disabled="isBusy">
+                    Spremi
+                </MudButton>
+                <MudButton Href="/korisnici" Variant="Variant.Text">Odustani</MudButton>
+            </MudStack>
+
+        </MudStack>
+    </MudForm>
+</MudPaper>
+
+@code {
+    [Parameter]
+    public int? Id { get; set; }
+
+    private MudForm? form;
+    private SaveUserAdminDto model = new();
+    private List<RoleDto> roles = new();
+    private List<LookupDto> employees = new();
+    // MudSelect s višestrukim odabirom traži IReadOnlyCollection, ne IEnumerable
+    private IReadOnlyCollection<int> selectedRoleIds = new HashSet<int>();
+    private string? errorMessage;
+    private bool isBusy;
+
+    private bool IsEdit => Id.HasValue;
+
+    private string Title => IsEdit ? "Uredi račun" : "Novi račun";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            roles = await Http.GetFromJsonAsync<List<RoleDto>>("api/users/roles") ?? new();
+            employees = await Http.GetFromJsonAsync<List<LookupDto>>("api/employees/lookup") ?? new();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Šifarnike nije moguće učitati: {ex.Message}";
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!IsEdit)
+        {
+            return;
+        }
+
+        try
+        {
+            var user = await Http.GetFromJsonAsync<UserAdminDto>($"api/users/{Id}");
+
+            if (user is not null)
+            {
+                model = new SaveUserAdminDto
+                {
+                    Email = user.Email,
+                    DisplayName = user.DisplayName,
+                    IsActive = user.IsActive,
+                    EmployeeId = user.EmployeeId
+                };
+
+                // s poslužitelja stižu nazivi uloga, obrazac radi s njihovim id-evima
+                selectedRoleIds = roles
+                    .Where(r => user.Roles.Contains(r.Name))
+                    .Select(r => r.Id)
+                    .ToHashSet();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Račun nije moguće učitati: {ex.Message}";
+        }
+    }
+
+    private async Task Save()
+    {
+        errorMessage = null;
+
+        if (form is not null)
+        {
+            await form.ValidateAsync();
+
+            if (!form.IsValid)
+            {
+                return;
+            }
+        }
+
+        model.RoleIds = selectedRoleIds.ToList();
+
+        if (model.RoleIds.Count == 0)
+        {
+            errorMessage = "Odaberite barem jednu ulogu.";
+            return;
+        }
+
+        isBusy = true;
+
+        try
+        {
+            var response = IsEdit
+                ? await Http.PutAsJsonAsync($"api/users/{Id}", model)
+                : await Http.PostAsJsonAsync("api/users", model);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add(IsEdit ? "Promjene su spremljene." : "Račun je dodan.", Severity.Success);
+                Navigation.NavigateTo("/korisnici");
+            }
+            else
+            {
+                errorMessage = await response.Content.ReadAsStringAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Spremanje nije uspjelo: {ex.Message}";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private string RoleLabel(int roleId) => roleId switch
+    {
+        1 => "Administrator",
+        2 => "Upravitelj",
+        3 => "Izvršitelj",
+        4 => "Prijavitelj",
+        _ => roles.FirstOrDefault(r => r.Id == roleId)?.Name ?? roleId.ToString()
+    };
+}

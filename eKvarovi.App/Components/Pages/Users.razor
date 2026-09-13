@@ -1,0 +1,129 @@
+@page "/korisnici"
+@rendermode InteractiveServer
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Korisnički računi - e-Kvarovi</PageTitle>
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h4">Korisnički računi</MudText>
+    <MudButton Href="/korisnici/novi"
+               Variant="Variant.Filled"
+               Color="Color.Primary"
+               StartIcon="@Icons.Material.Filled.PersonAdd">
+        Novi račun
+    </MudButton>
+</MudStack>
+
+@if (isLoading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (errorMessage is not null)
+{
+    <MudAlert Severity="Severity.Error">@errorMessage</MudAlert>
+}
+else
+{
+    <MudTable Items="users" Hover="true" Striped="true" Dense="true" Elevation="1">
+        <HeaderContent>
+            <MudTh>E-mail</MudTh>
+            <MudTh>Naziv</MudTh>
+            <MudTh>Djelatnik</MudTh>
+            <MudTh>Uloge</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width: 110px;"></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="E-mail">@context.Email</MudTd>
+            <MudTd DataLabel="Naziv">@context.DisplayName</MudTd>
+            <MudTd DataLabel="Djelatnik">@(context.EmployeeName ?? "—")</MudTd>
+            <MudTd DataLabel="Uloge">
+                @foreach (var role in context.Roles)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="@RoleColor(role)" Class="mr-1">
+                        @DisplayHelpers.RoleLabel(role)
+                    </MudChip>
+                }
+            </MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Size="Size.Small"
+                         Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive ? "Aktivan" : "Neaktivan")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                               Size="Size.Small"
+                               Color="Color.Primary"
+                               Href="@($"/korisnici/uredi/{context.Id}")" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                               Size="Size.Small"
+                               Color="Color.Error"
+                               OnClick="@(() => Delete(context))" />
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<UserAdminDto> users = new();
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            users = await Http.GetFromJsonAsync<List<UserAdminDto>>("api/users") ?? new();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Podatke nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task Delete(UserAdminDto user)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Brisanje računa",
+            $"Želite li obrisati račun \"{user.Email}\"?",
+            yesText: "Obriši",
+            cancelText: "Odustani");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        var response = await Http.DeleteAsync($"api/users/{user.Id}");
+
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Račun je obrisan.", Severity.Success);
+            await Load();
+        }
+        else
+        {
+            Snackbar.Add(await response.Content.ReadAsStringAsync(), Severity.Error);
+        }
+    }
+
+    private static Color RoleColor(string role) => role switch
+    {
+        "Admin" => Color.Error,
+        "Manager" => Color.Warning,
+        "Technician" => Color.Info,
+        _ => Color.Default
+    };
+}

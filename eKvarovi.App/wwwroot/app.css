@@ -1,0 +1,234 @@
+/* ==========================================================================
+   e-Kvarovi - dodatni izgled preko MudBlazor teme
+   ========================================================================== */
+
+html,
+body {
+    font-family: 'Inter', 'Roboto', -apple-system, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    letter-spacing: -0.01em;
+}
+
+/* ---------- naslovi ---------- */
+
+.mud-typography-h4 {
+    font-weight: 700 !important;
+    letter-spacing: -0.03em;
+}
+
+.mud-typography-h5,
+.mud-typography-h6 {
+    font-weight: 650 !important;
+    letter-spacing: -0.02em;
+}
+
+/* ---------- gornja traka ---------- */
+
+.mud-appbar {
+    border-bottom: 1px solid var(--mud-palette-divider);
+    backdrop-filter: saturate(180%) blur(8px);
+    background-color: rgba(255, 255, 255, 0.85) !important;
+}
+
+/* ---------- bočni izbornik ---------- */
+
+.mud-drawer {
+    border-right: 1px solid var(--mud-palette-divider);
+}
+
+.mud-nav-link {
+    border-radius: 10px;
+    margin: 2px 10px;
+    padding-top: 9px !important;
+    padding-bottom: 9px !important;
+    font-weight: 500;
+    transition: background-color .15s ease, color .15s ease;
+}
+
+.mud-nav-link:hover {
+    background-color: var(--mud-palette-gray-lighter) !important;
+}
+
+/* aktivna stavka dobije blagu podlogu u boji naglaska */
+.mud-nav-link.active {
+    background-color: rgba(79, 70, 229, .10) !important;
+    color: var(--mud-palette-primary) !important;
+    font-weight: 600;
+}
+
+.mud-nav-link.active .mud-icon-root {
+    color: var(--mud-palette-primary) !important;
+}
+
+/* ---------- kartice i plohe ---------- */
+
+.mud-paper,
+.mud-card {
+    border: 1px solid var(--mud-palette-divider);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .04) !important;
+}
+
+/* kartice koje vode na detalje blago se podignu na prijelaz mišem */
+.mud-card:hover {
+    box-shadow: 0 8px 24px -8px rgba(15, 23, 42, .12) !important;
+    border-color: #CBD5E1;
+    transition: box-shadow .2s ease, border-color .2s ease;
+}
+
+/* ---------- tablice ---------- */
+
+.mud-table {
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.mud-table-head .mud-table-cell {
+    background-color: var(--mud-palette-gray-lighter);
+    font-weight: 600;
+    font-size: .75rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--mud-palette-text-secondary);
+    border-bottom: 1px solid var(--mud-palette-divider);
+}
+
+.mud-table-row:hover {
+    background-color: var(--mud-palette-gray-lighter) !important;
+}
+
+.mud-table-cell {
+    border-bottom: 1px solid var(--mud-palette-divider-light);
+}
+
+/* ---------- oznake (chip) ---------- */
+
+.mud-chip {
+    font-weight: 600;
+    font-size: .75rem;
+    letter-spacing: .01em;
+}
+
+.mud-chip.mud-chip-size-small {
+    height: 24px;
+}
+
+/* ---------- gumbi ---------- */
+
+.mud-button-root {
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    text-transform: none;
+}
+
+.mud-button-filled {
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .08) !important;
+}
+
+.mud-button-filled:hover {
+    box-shadow: 0 4px 12px -2px rgba(79, 70, 229, .35) !important;
+}
+
+/* ---------- polja obrazaca ---------- */
+
+.mud-input-outlined-border {
+    border-radius: 10px;
+}
+
+.mud-input.mud-input-outlined:hover .mud-input-outlined-border {
+    border-color: #94A3B8;
+}
+
+/* ---------- vremenska crta ---------- */
+
+.mud-timeline-item .mud-card {
+    transition: border-color .2s ease;
+}
+
+/* ---------- obavijesti ---------- */
+
+.mud-alert {
+    border-radius: 10px;
+}
+
+.mud-snackbar {
+    border-radius: 10px !important;
+}
+
+/* ---------- klizač ---------- */
+
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #CBD5E1;
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #94A3B8;
+    background-clip: content-box;
+}
+
+/* ==========================================================================
+   Vlastite klase
+   ========================================================================== */
+
+/* pozadina stranice za prijavu */
+.login-backdrop {
+    min-height: 100vh;
+    background:
+        radial-gradient(1000px 500px at 10% -10%, rgba(79, 70, 229, .18), transparent 60%),
+        radial-gradient(900px 500px at 110% 110%, rgba(14, 165, 233, .18), transparent 60%),
+        #F8FAFC;
+}
+
+.login-card {
+    border-radius: 18px !important;
+    box-shadow: 0 24px 48px -24px rgba(15, 23, 42, .25) !important;
+}
+
+/* obojena podloga ispod ikone na karticama nadzorne ploče */
+.stat-icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.stat-icon.stat-primary { background: rgba(79, 70, 229, .12); }
+.stat-icon.stat-success { background: rgba(16, 185, 129, .12); }
+.stat-icon.stat-warning { background: rgba(245, 158, 11, .12); }
+.stat-icon.stat-error   { background: rgba(239, 68, 68, .12); }
+.stat-icon.stat-info    { background: rgba(59, 130, 246, .12); }
+.stat-icon.stat-secondary { background: rgba(14, 165, 233, .12); }
+
+/* okvir oko intervencije unutar vremenske crte */
+.intervention-box {
+    background: var(--mud-palette-gray-lighter);
+    border: 1px solid var(--mud-palette-divider);
+    border-radius: 10px;
+}
+
+/* traka u boji na lijevom rubu kartice, prema prioritetu */
+.priority-edge {
+    border-left: 3px solid transparent;
+}
+
+.priority-edge.p-kriticno { border-left-color: #EF4444; }
+.priority-edge.p-visok    { border-left-color: #F59E0B; }
+.priority-edge.p-srednji  { border-left-color: #3B82F6; }
+.priority-edge.p-nizak    { border-left-color: #CBD5E1; }
+
+.text-right {
+    text-align: right;
+}

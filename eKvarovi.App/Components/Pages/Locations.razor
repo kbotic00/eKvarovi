@@ -1,0 +1,193 @@
+@page "/lokacije"
+@rendermode InteractiveServer
+@inject HttpClient Http
+@inject LookupService Lookups
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Lokacije - e-Kvarovi</PageTitle>
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-6">
+    <MudStack Spacing="1">
+        <MudText Typo="Typo.h4">Lokacije</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            @Filtered.Count() od @locations.Count lokacija
+        </MudText>
+    </MudStack>
+    <MudButton Href="/lokacije/nova"
+               Variant="Variant.Filled"
+               Color="Color.Primary"
+               Size="Size.Large"
+               StartIcon="@Icons.Material.Rounded.Add">
+        Nova lokacija
+    </MudButton>
+</MudStack>
+
+@if (isLoading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (errorMessage is not null)
+{
+    <MudAlert Severity="Severity.Error">@errorMessage</MudAlert>
+}
+else
+{
+    <MudPaper Elevation="0" Class="pa-4 mb-4">
+        <MudGrid Spacing="2">
+            <MudItem xs="12" md="5">
+                <MudTextField @bind-Value="search"
+                              Placeholder="Pretraži po nazivu, gradu ili adresi"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Rounded.Search"
+                              Immediate="true"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudSelect T="int?" @bind-Value="filterTypeId"
+                           Label="Vrsta lokacije"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           Clearable="true">
+                    @foreach (var type in locationTypes)
+                    {
+                        <MudSelectItem T="int?" Value="@type.Id">@type.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="3" Class="d-flex align-center">
+                <MudCheckBox @bind-Value="onlyActive" Color="Color.Primary" Label="Samo aktivne" />
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudTable Items="Filtered" Hover="true" Dense="true" Elevation="0">
+        <HeaderContent>
+            <MudTh>Naziv</MudTh>
+            <MudTh>Vrsta</MudTh>
+            <MudTh>Adresa</MudTh>
+            <MudTh>Grad</MudTh>
+            <MudTh>Djelatnici</MudTh>
+            <MudTh>Otvoreni kvarovi</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width: 110px;"></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Naziv">@context.Name</MudTd>
+            <MudTd DataLabel="Vrsta">
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Text">
+                    @context.LocationTypeName
+                </MudChip>
+            </MudTd>
+            <MudTd DataLabel="Adresa">@context.Address</MudTd>
+            <MudTd DataLabel="Grad">@context.City</MudTd>
+            <MudTd DataLabel="Djelatnici">@context.EmployeeCount</MudTd>
+            <MudTd DataLabel="Otvoreni kvarovi">
+                @if (context.OpenFaultCount > 0)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Warning">
+                        @context.OpenFaultCount
+                    </MudChip>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">—</MudText>
+                }
+            </MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Size="Size.Small"
+                         Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive ? "Aktivna" : "Neaktivna")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Rounded.Edit"
+                               Size="Size.Small"
+                               Color="Color.Primary"
+                               Href="@($"/lokacije/uredi/{context.Id}")" />
+                <MudIconButton Icon="@Icons.Material.Rounded.Delete"
+                               Size="Size.Small"
+                               Color="Color.Error"
+                               OnClick="@(() => Delete(context))" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>Nema lokacija koje odgovaraju pretrazi.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+}
+
+@code {
+    private List<LocationDto> locations = new();
+    private List<LookupDto> locationTypes = new();
+
+    private string search = string.Empty;
+    private int? filterTypeId;
+    private bool onlyActive;
+
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    private IEnumerable<LocationDto> Filtered =>
+        locations
+            .Where(x => !onlyActive || x.IsActive)
+            .Where(x => filterTypeId is null || x.LocationTypeId == filterTypeId)
+            .Where(x => string.IsNullOrWhiteSpace(search) ||
+                        x.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                        x.City.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                        x.Address.Contains(search, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        locationTypes = (await Lookups.GetAsync()).LocationTypes;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            locations = await Http.GetFromJsonAsync<List<LocationDto>>("api/locations") ?? new();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Podatke nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task Delete(LocationDto location)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Brisanje lokacije",
+            $"Želite li obrisati lokaciju \"{location.Name}\"?",
+            yesText: "Obriši",
+            cancelText: "Odustani");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        var response = await Http.DeleteAsync($"api/locations/{location.Id}");
+
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Lokacija je obrisana.", Severity.Success);
+            Lookups.Invalidate();
+            await Load();
+        }
+        else
+        {
+            // API vraća razumljivo objašnjenje kad brisanje nije dopušteno
+            Snackbar.Add(await response.Content.ReadAsStringAsync(), Severity.Error);
+        }
+    }
+}

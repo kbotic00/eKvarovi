@@ -1,0 +1,751 @@
+@page "/kvarovi/{Id:int}"
+@rendermode InteractiveServer
+@inject HttpClient Http
+@inject LookupService Lookups
+@inject CurrentUserService CurrentUser
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>@(detail?.Report.Title ?? "Kvar") - e-Kvarovi</PageTitle>
+
+@if (isLoading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (errorMessage is not null && detail is null)
+{
+    <MudAlert Severity="Severity.Error">@errorMessage</MudAlert>
+    <MudButton Href="/kvarovi" Class="mt-4" StartIcon="@Icons.Material.Rounded.ArrowBack">Natrag</MudButton>
+}
+else if (detail is not null)
+{
+    var report = detail.Report;
+
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-6">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIconButton Icon="@Icons.Material.Rounded.ArrowBack" Href="@BackUrl" />
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.h4">@report.Title</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                    Prijava #@report.Id · @report.LocationName
+                </MudText>
+            </MudStack>
+        </MudStack>
+
+        @if (CanEditReport(report))
+        {
+            <MudButton Href="@($"/kvarovi/uredi/{report.Id}")"
+                       Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Rounded.Edit">
+                Uredi
+            </MudButton>
+        }
+    </MudStack>
+
+    @if (errorMessage is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4">@errorMessage</MudAlert>
+    }
+
+    @if (report.IsOverdue)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4" Icon="@Icons.Material.Rounded.Alarm">
+            Rok za rješavanje istekao je @DisplayHelpers.Date(report.Deadline).
+        </MudAlert>
+    }
+
+    <MudGrid Spacing="3">
+
+        @* ================= lijevo: podaci i upravljanje ================= *@
+        <MudItem xs="12" md="4">
+
+            <MudPaper Elevation="0" Class="pa-5">
+                <MudStack Row="true" Spacing="2" Class="mb-4">
+                    <MudChip T="string" Color="@DisplayHelpers.StatusColor(report.FaultStatusId)">
+                        @report.FaultStatusName
+                    </MudChip>
+                    @if (report.FaultPriorityName is not null)
+                    {
+                        <MudChip T="string" Color="@DisplayHelpers.PriorityColor(report.FaultPriorityId)">
+                            @report.FaultPriorityName
+                        </MudChip>
+                    }
+                </MudStack>
+
+                <MudText Typo="Typo.body1" Class="mb-4">@report.Description</MudText>
+
+                <MudDivider Class="my-3" />
+
+                <MudStack Spacing="2">
+                    <InfoRow Label="Lokacija" Value="@($"{report.LocationName}, {report.LocationCity}")" />
+                    <InfoRow Label="Prijavio" Value="@report.ReporterName" />
+                    <InfoRow Label="Prijavljeno" Value="@DisplayHelpers.DateTimeShort(report.ReportedAt)" />
+                    <InfoRow Label="Vrsta kvara" Value="@(report.FaultTypeName ?? "nije određena")" />
+                    <InfoRow Label="Rok" Value="@DisplayHelpers.DeadlineText(report.Deadline, report.IsClosed)" />
+                    <InfoRow Label="Izvršitelj" Value="@(report.CurrentTechnicianName ?? "nije dodijeljen")" />
+
+                    @if (report.ReviewedAt is not null)
+                    {
+                        <InfoRow Label="Pregledano" Value="@DisplayHelpers.Date(report.ReviewedAt)" />
+                    }
+                    @if (report.ResolvedAt is not null)
+                    {
+                        <InfoRow Label="Riješeno" Value="@DisplayHelpers.DateTimeShort(report.ResolvedAt)" />
+                    }
+                    @if (report.ClosedAt is not null)
+                    {
+                        <InfoRow Label="Zatvoreno" Value="@DisplayHelpers.DateTimeShort(report.ClosedAt)" />
+                    }
+
+                    <MudDivider Class="my-2" />
+
+                    <InfoRow Label="Ukupno rada" Value="@detail.TotalDurationText" />
+                    <InfoRow Label="Materijal" Value="@DisplayHelpers.Money(detail.TotalMaterialCost)" />
+                    <InfoRow Label="Radnih naloga" Value="@report.AssignmentCount.ToString()" />
+                    <InfoRow Label="Intervencija" Value="@report.InterventionCount.ToString()" />
+                </MudStack>
+
+                @if (!string.IsNullOrWhiteSpace(report.ClosingNote))
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mt-4">
+                        <strong>Završna provjera:</strong> @report.ClosingNote
+                    </MudAlert>
+                }
+            </MudPaper>
+
+            @* ---------- pregled prijave ---------- *@
+            @if (CurrentUser.IsManagement && !report.IsClosed)
+            {
+                <MudPaper Elevation="0" Class="pa-5 mt-4">
+                    <MudText Typo="Typo.h6" Class="mb-1">
+                        @(report.IsReviewed ? "Klasifikacija" : "Pregled prijave")
+                    </MudText>
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mb-3">
+                        Odredite vrstu kvara, prioritet i rok.
+                    </MudText>
+
+                    <MudStack Spacing="2">
+                        <MudSelect T="int" @bind-Value="reviewTypeId"
+                                   Label="Vrsta kvara"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense">
+                            @foreach (var type in lookups.FaultTypes)
+                            {
+                                <MudSelectItem T="int" Value="@type.Id">@type.Name</MudSelectItem>
+                            }
+                        </MudSelect>
+
+                        <MudSelect T="int" @bind-Value="reviewPriorityId"
+                                   Label="Prioritet"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense">
+                            @foreach (var priority in lookups.FaultPriorities)
+                            {
+                                <MudSelectItem T="int" Value="@priority.Id">@priority.Name</MudSelectItem>
+                            }
+                        </MudSelect>
+
+                        <MudDatePicker @bind-Date="reviewDeadline"
+                                       Label="@(DeadlineRequired ? "Rok (obavezan)" : "Rok")"
+                                       Variant="Variant.Outlined"
+                                       Margin="Margin.Dense"
+                                       Clearable="true"
+                                       HelperText="@(DeadlineRequired ? "Kritična prijava mora imati rok." : null)" />
+
+                        <MudButton OnClick="SaveReview"
+                                   Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   FullWidth="true"
+                                   Disabled="isBusy"
+                                   StartIcon="@Icons.Material.Rounded.FactCheck">
+                            @(report.IsReviewed ? "Spremi klasifikaciju" : "Označi pregledanim")
+                        </MudButton>
+                    </MudStack>
+                </MudPaper>
+            }
+
+            @* ---------- dodjela izvršitelju ---------- *@
+            @if (CurrentUser.IsManagement && !report.IsClosed && report.IsReviewed)
+            {
+                <MudPaper Elevation="0" Class="pa-5 mt-4">
+                    <MudText Typo="Typo.h6" Class="mb-1">
+                        @(report.IsAssigned ? "Preraspodjela" : "Dodjela izvršitelju")
+                    </MudText>
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mb-3">
+                        @(report.IsAssigned
+                            ? "Prethodni nalog ostaje u povijesti."
+                            : "Dodjelom nastaje radni nalog.")
+                    </MudText>
+
+                    <MudStack Spacing="2">
+                        <MudSelect T="int" @bind-Value="selectedTechnicianId"
+                                   Label="Izvršitelj"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense">
+                            @foreach (var technician in lookups.Technicians)
+                            {
+                                <MudSelectItem T="int" Value="@technician.Id">@technician.Name</MudSelectItem>
+                            }
+                        </MudSelect>
+
+                        <MudTextField @bind-Value="assignmentNote"
+                                      Label="Uputa izvršitelju"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense"
+                                      Lines="2" />
+
+                        @if (report.IsAssigned)
+                        {
+                            <MudTextField @bind-Value="reassignReason"
+                                          Label="Razlog preraspodjele"
+                                          Variant="Variant.Outlined"
+                                          Margin="Margin.Dense"
+                                          Lines="2" />
+                        }
+
+                        <MudButton OnClick="Assign"
+                                   Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   FullWidth="true"
+                                   Disabled="isBusy"
+                                   StartIcon="@Icons.Material.Rounded.PersonAddAlt">
+                            @(report.IsAssigned ? "Preraspodijeli" : "Dodijeli")
+                        </MudButton>
+
+                        @if (report.IsAssigned)
+                        {
+                            <MudButton OnClick="Unassign"
+                                       Variant="Variant.Text"
+                                       Color="Color.Error"
+                                       FullWidth="true"
+                                       Disabled="isBusy"
+                                       StartIcon="@Icons.Material.Rounded.PersonRemove">
+                                Skini nalog s izvršitelja
+                            </MudButton>
+                        }
+                    </MudStack>
+                </MudPaper>
+            }
+
+            @* ---------- promjena statusa ---------- *@
+            @if (CurrentUser.IsManagement && AllowedStatuses.Any())
+            {
+                <MudPaper Elevation="0" Class="pa-5 mt-4">
+                    <MudText Typo="Typo.h6" Class="mb-3">Status</MudText>
+
+                    <MudStack Spacing="2">
+                        <MudSelect T="int?" @bind-Value="newStatusId"
+                                   Label="Novi status"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense">
+                            @foreach (var status in AllowedStatuses)
+                            {
+                                <MudSelectItem T="int?" Value="@status.Id">@status.Name</MudSelectItem>
+                            }
+                        </MudSelect>
+
+                        @if (newStatusId == FaultStatusIds.Zatvoreno)
+                        {
+                            <MudTextField @bind-Value="closingNote"
+                                          Label="Obrazloženje završne provjere (obavezno)"
+                                          Variant="Variant.Outlined"
+                                          Margin="Margin.Dense"
+                                          Lines="2" />
+                        }
+
+                        <MudButton OnClick="ChangeStatus"
+                                   Variant="Variant.Outlined"
+                                   Color="Color.Secondary"
+                                   FullWidth="true"
+                                   Disabled="@(isBusy || newStatusId is null)"
+                                   StartIcon="@Icons.Material.Rounded.SwapHoriz">
+                                Promijeni status
+                        </MudButton>
+                    </MudStack>
+                </MudPaper>
+            }
+        </MudItem>
+
+        @* ================= desno: povijest i privitci ================= *@
+        <MudItem xs="12" md="8">
+
+            <MudPaper Elevation="0" Class="pa-5 mb-4">
+                <AttachmentPanel FaultReportId="Id"
+                                 Title="Privitci uz prijavu"
+                                 CanUpload="@CanUploadToReport(report)"
+                                 PurposeIds="@ReportPurposes"
+                                 OnChanged="Load" />
+            </MudPaper>
+
+            <MudText Typo="Typo.h5" Class="mb-3">Povijest rada</MudText>
+
+            @if (detail.Assignments.Count == 0)
+            {
+                <MudAlert Severity="Severity.Info">
+                    Prijava još nije dodijeljena nijednom izvršitelju.
+                </MudAlert>
+            }
+            else
+            {
+                <MudTimeline TimelinePosition="TimelinePosition.Start">
+                    @foreach (var assignment in detail.Assignments)
+                    {
+                        <MudTimelineItem Color="@(assignment.IsActive ? Color.Primary : Color.Default)"
+                                         Size="Size.Small">
+                            <MudPaper Elevation="0" Class="pa-4">
+
+                                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+                                    <MudStack Spacing="0">
+                                        <MudText Typo="Typo.subtitle1">
+                                            <strong>@assignment.TechnicianName</strong>
+                                        </MudText>
+                                        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                            Dodijeljeno @DisplayHelpers.DateTimeShort(assignment.AssignedAt)
+                                            @if (assignment.AssignedByName is not null)
+                                            {
+                                                <span> · @assignment.AssignedByName</span>
+                                            }
+                                            @if (assignment.UnassignedAt is not null)
+                                            {
+                                                <span> · zatvoreno @DisplayHelpers.DateTimeShort(assignment.UnassignedAt)</span>
+                                            }
+                                        </MudText>
+                                    </MudStack>
+
+                                    <MudChip T="string" Size="Size.Small"
+                                             Color="@(assignment.IsActive ? Color.Success : Color.Default)">
+                                        @(assignment.IsActive ? "Aktivan" : "Zatvoren")
+                                    </MudChip>
+                                </MudStack>
+
+                                @if (!string.IsNullOrWhiteSpace(assignment.Note))
+                                {
+                                    <MudText Typo="Typo.body2" Class="mt-2 mud-text-secondary">
+                                        <em>Uputa: @assignment.Note</em>
+                                    </MudText>
+                                }
+
+                                @if (!string.IsNullOrWhiteSpace(assignment.ReassignReason))
+                                {
+                                    <MudText Typo="Typo.body2" Class="mt-1 mud-text-secondary">
+                                        <em>Razlog preraspodjele: @assignment.ReassignReason</em>
+                                    </MudText>
+                                }
+
+                                @if (assignment.Interventions.Count > 0)
+                                {
+                                    <MudDivider Class="my-3" />
+
+                                    @foreach (var intervention in assignment.Interventions)
+                                    {
+                                        <MudPaper Elevation="0" Class="pa-3 mb-2 intervention-box">
+
+                                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                                <MudChip T="string" Size="Size.Small"
+                                                         Color="@DisplayHelpers.InterventionColor(intervention.InterventionStatusId)">
+                                                    @intervention.InterventionStatusName
+                                                </MudChip>
+
+                                                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                                    <MudText Typo="Typo.caption">
+                                                        @DisplayHelpers.Duration(intervention.DurationMinutes)
+                                                    </MudText>
+                                                    @if (CanWorkOn(assignment))
+                                                    {
+                                                        <MudIconButton Icon="@Icons.Material.Rounded.OpenInNew"
+                                                                       Size="Size.Small"
+                                                                       Href="@($"/intervencije/{intervention.Id}")" />
+                                                    }
+                                                </MudStack>
+                                            </MudStack>
+
+                                            @if (!string.IsNullOrWhiteSpace(intervention.Note))
+                                            {
+                                                <MudText Typo="Typo.body2" Class="mt-2">@intervention.Note</MudText>
+                                            }
+
+                                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                                @DisplayHelpers.DateTimeShort(intervention.StartedAt)
+                                                @if (intervention.FinishedAt is not null)
+                                                {
+                                                    <span> — @DisplayHelpers.DateTimeShort(intervention.FinishedAt)</span>
+                                                }
+                                            </MudText>
+
+                                            @if (intervention.Materials.Count > 0)
+                                            {
+                                                <MudSimpleTable Dense="true" Bordered="false" Class="mt-2">
+                                                    <tbody>
+                                                        @foreach (var material in intervention.Materials)
+                                                        {
+                                                            <tr>
+                                                                <td>@material.MaterialName</td>
+                                                                <td>@material.Quantity.ToString("0.##") @material.UnitAbbreviation</td>
+                                                                <td class="text-right">@DisplayHelpers.Money(material.TotalPrice)</td>
+                                                            </tr>
+                                                        }
+                                                        <tr>
+                                                            <td colspan="2"><strong>Ukupno</strong></td>
+                                                            <td class="text-right">
+                                                                <strong>@DisplayHelpers.Money(intervention.TotalMaterialCost)</strong>
+                                                            </td>
+                                                        </tr>
+                                                    </tbody>
+                                                </MudSimpleTable>
+                                            }
+
+                                            @if (intervention.Attachments.Count > 0)
+                                            {
+                                                <MudStack Row="true" Spacing="2" Class="mt-2">
+                                                    @foreach (var file in intervention.Attachments.Where(a => a.IsImage))
+                                                    {
+                                                        <MudLink Href="@($"{ApiBase}{file.Url}")" Target="_blank">
+                                                            <MudImage Src="@($"{ApiBase}{file.Url}")"
+                                                                      Alt="@file.OriginalFileName"
+                                                                      Width="110" Class="rounded" />
+                                                        </MudLink>
+                                                    }
+                                                </MudStack>
+                                            }
+
+                                        </MudPaper>
+                                    }
+                                }
+
+                                @if (assignment.IsActive && CanWorkOn(assignment) && !report.IsClosed)
+                                {
+                                    var open = assignment.Interventions.FirstOrDefault(i => !i.IsFinal);
+
+                                    @if (open is not null)
+                                    {
+                                        <MudButton Href="@($"/intervencije/{open.Id}")"
+                                                   Variant="Variant.Filled"
+                                                   Color="Color.Warning"
+                                                   Size="Size.Small"
+                                                   StartIcon="@Icons.Material.Rounded.Edit"
+                                                   Class="mt-2">
+                                            Nastavi intervenciju
+                                        </MudButton>
+                                    }
+                                    else
+                                    {
+                                        <MudButton OnClick="@(() => StartIntervention(assignment.Id))"
+                                                   Variant="Variant.Outlined"
+                                                   Color="Color.Primary"
+                                                   Size="Size.Small"
+                                                   Disabled="isBusy"
+                                                   StartIcon="@Icons.Material.Rounded.PlayArrow"
+                                                   Class="mt-2">
+                                            Pokreni novu intervenciju
+                                        </MudButton>
+                                    }
+                                }
+
+                            </MudPaper>
+                        </MudTimelineItem>
+                    }
+                </MudTimeline>
+            }
+        </MudItem>
+
+    </MudGrid>
+}
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private FaultReportDetailDto? detail;
+    private AllLookupsDto lookups = new();
+
+    private int reviewTypeId;
+    private int reviewPriorityId;
+    private DateTime? reviewDeadline;
+
+    private int selectedTechnicianId;
+    private string? assignmentNote;
+    private string? reassignReason;
+
+    private int? newStatusId;
+    private string? closingNote;
+
+    private bool isLoading = true;
+    private bool isBusy;
+    private string? errorMessage;
+
+    /// <summary>Uz prijavu se prilaže početna fotografija i dokumenti.</summary>
+    private static readonly int[] ReportPurposes =
+        [AttachmentPurposeIds.FotografijaPrije, AttachmentPurposeIds.Dokument];
+
+    private string ApiBase => Http.BaseAddress?.ToString().TrimEnd('/') ?? string.Empty;
+
+    private string BackUrl => CurrentUser.IsFieldWorker ? "/kvarovi" : "/kvarovi/moji";
+
+    private bool DeadlineRequired =>
+        lookups.FaultPriorities.FirstOrDefault(p => p.Id == reviewPriorityId)?.RequiresDeadline == true;
+
+    /// <summary>Dopušteni prijelazi dolaze iz zajedničke tablice pravila.</summary>
+    private IEnumerable<LookupDto> AllowedStatuses
+    {
+        get
+        {
+            if (detail is null)
+            {
+                return [];
+            }
+
+            var allowed = FaultStatusRules.AllowedFrom(detail.Report.FaultStatusId);
+
+            return lookups.FaultStatuses.Where(s => allowed.Contains(s.Id));
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        lookups = await Lookups.GetAsync();
+    }
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            detail = await Http.GetFromJsonAsync<FaultReportDetailDto>($"api/faultreports/{Id}/detail");
+
+            if (detail is not null)
+            {
+                reviewTypeId = detail.Report.FaultTypeId ?? 0;
+                reviewPriorityId = detail.Report.FaultPriorityId ?? 0;
+                reviewDeadline = detail.Report.Deadline;
+            }
+
+            newStatusId = null;
+            closingNote = null;
+            reassignReason = null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Prijavu nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    /// <summary>Prijavitelj uređuje svoju prijavu dok je nitko nije preuzeo.</summary>
+    private bool CanEditReport(FaultReportDto report)
+    {
+        if (CurrentUser.IsManagement)
+        {
+            return !report.IsClosed;
+        }
+
+        return report.ReporterId == CurrentUser.EmployeeId &&
+               report.FaultStatusId == FaultStatusIds.Zaprimljeno;
+    }
+
+    private bool CanUploadToReport(FaultReportDto report)
+    {
+        if (report.IsClosed)
+        {
+            return false;
+        }
+
+        return CurrentUser.IsFieldWorker || report.ReporterId == CurrentUser.EmployeeId;
+    }
+
+    /// <summary>Izvršitelj radi samo na svojim nalozima.</summary>
+    private bool CanWorkOn(WorkAssignmentDto assignment) =>
+        CurrentUser.IsManagement || assignment.TechnicianId == CurrentUser.EmployeeId;
+
+    private async Task SaveReview()
+    {
+        errorMessage = null;
+
+        if (reviewTypeId <= 0 || reviewPriorityId <= 0)
+        {
+            errorMessage = "Odaberite vrstu kvara i prioritet.";
+            return;
+        }
+
+        if (DeadlineRequired && reviewDeadline is null)
+        {
+            errorMessage = "Prijava kritičnog prioriteta mora imati određen rok.";
+            return;
+        }
+
+        isBusy = true;
+
+        try
+        {
+            var response = await Http.PutAsJsonAsync($"api/faultreports/{Id}/review", new ReviewFaultReportDto
+            {
+                FaultTypeId = reviewTypeId,
+                FaultPriorityId = reviewPriorityId,
+                Deadline = reviewDeadline
+            });
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Prijava je pregledana.", Severity.Success);
+                await Load();
+            }
+            else
+            {
+                errorMessage = await response.Content.ReadAsStringAsync();
+            }
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task Assign()
+    {
+        errorMessage = null;
+
+        if (selectedTechnicianId <= 0)
+        {
+            errorMessage = "Odaberite izvršitelja.";
+            return;
+        }
+
+        isBusy = true;
+
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/workassignments", new SaveWorkAssignmentDto
+            {
+                FaultReportId = Id,
+                TechnicianId = selectedTechnicianId,
+                Note = assignmentNote,
+                ReassignReason = reassignReason
+            });
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Radni nalog je izdan.", Severity.Success);
+                selectedTechnicianId = 0;
+                assignmentNote = null;
+                await Load();
+            }
+            else
+            {
+                errorMessage = await response.Content.ReadAsStringAsync();
+            }
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task Unassign()
+    {
+        var active = detail?.Assignments.FirstOrDefault(a => a.IsActive);
+
+        if (active is null)
+        {
+            return;
+        }
+
+        isBusy = true;
+
+        try
+        {
+            var response = await Http.PutAsJsonAsync(
+                $"api/workassignments/{active.Id}/unassign", reassignReason);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Nalog je skinut s izvršitelja.", Severity.Success);
+                await Load();
+            }
+            else
+            {
+                errorMessage = await response.Content.ReadAsStringAsync();
+            }
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task ChangeStatus()
+    {
+        if (newStatusId is null)
+        {
+            return;
+        }
+
+        errorMessage = null;
+
+        if (newStatusId == FaultStatusIds.Zatvoreno && string.IsNullOrWhiteSpace(closingNote))
+        {
+            errorMessage = "Obrazloženje završne provjere je obavezno.";
+            return;
+        }
+
+        isBusy = true;
+
+        try
+        {
+            var response = await Http.PutAsJsonAsync($"api/faultreports/{Id}/status", new ChangeFaultStatusDto
+            {
+                FaultStatusId = newStatusId.Value,
+                ClosingNote = closingNote
+            });
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Status je promijenjen.", Severity.Success);
+                await Load();
+            }
+            else
+            {
+                errorMessage = await response.Content.ReadAsStringAsync();
+            }
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task StartIntervention(int workAssignmentId)
+    {
+        isBusy = true;
+
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/interventions/start", new StartInterventionDto
+            {
+                WorkAssignmentId = workAssignmentId
+            });
+
+            if (!response.IsSuccessStatusCode)
+            {
+                errorMessage = await response.Content.ReadAsStringAsync();
+                return;
+            }
+
+            var created = await response.Content.ReadFromJsonAsync<InterventionDto>();
+
+            if (created is not null)
+            {
+                Navigation.NavigateTo($"/intervencije/{created.Id}");
+            }
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+}

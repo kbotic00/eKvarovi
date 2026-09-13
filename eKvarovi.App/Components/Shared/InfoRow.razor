@@ -1,0 +1,14 @@
+@* Red "oznaka - vrijednost" za kartice s podacima. *@
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" Spacing="2">
+    <MudText Typo="Typo.body2" Class="mud-text-secondary">@Label</MudText>
+    <MudText Typo="Typo.body2" Align="Align.Right"><strong>@Value</strong></MudText>
+</MudStack>
+
+@code {
+    [Parameter]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter]
+    public string Value { get; set; } = string.Empty;
+}

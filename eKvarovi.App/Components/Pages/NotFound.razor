@@ -1,0 +1,19 @@
+@page "/not-found"
+@layout EmptyLayout
+
+<PageTitle>Stranica nije pronađena - e-Kvarovi</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="d-flex align-center" Style="min-height: 100vh;">
+    <MudPaper Elevation="2" Class="pa-8" Style="width: 100%;">
+        <MudStack AlignItems="AlignItems.Center" Spacing="3">
+            <MudIcon Icon="@Icons.Material.Filled.SearchOff" Color="Color.Warning" Size="Size.Large" />
+            <MudText Typo="Typo.h5">Stranica nije pronađena</MudText>
+            <MudText Typo="Typo.body2" Align="Align.Center" Class="mud-text-secondary">
+                Tražena adresa ne postoji ili je u međuvremenu uklonjena.
+            </MudText>
+            <MudButton Href="/" Variant="Variant.Filled" Color="Color.Primary">
+                Natrag na naslovnicu
+            </MudButton>
+        </MudStack>
+    </MudPaper>
+</MudContainer>
