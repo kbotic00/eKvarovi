@@ -102,7 +102,6 @@ isključivo iz JWT claima `employee_id`, nikad iz tijela zahtjeva.
 
 ## Model baze
 
-Dijagram je u `eKvarovi-model.dbml` — zalijepiti na [dbdiagram.io](https://dbdiagram.io).
 
 Tri odluke koje oblikuju model:
 
@@ -152,8 +151,4 @@ Fotografije prije i nakon rada te PDF dokumenti. Provjerava se vrsta i veličina
 datoteke, fizičko ime generira poslužitelj (GUID), a izvorno ime čuva se samo
 za prikaz. Brisanje uklanja i zapis u bazi i datoteku s diska.
 
----
 
-## Testiranje
-
-Plan testiranja s očekivanim rezultatima je u `PLAN-TESTIRANJA.md`.
